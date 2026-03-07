@@ -35,7 +35,7 @@ Status legend:
 ## Phase 2: Wikipedia integration
 
 * `T020` `done` - Define `WikipediaClient` interfaces in shared code.
-* `T021` `planned` - Implement Wikipedia search in shared code.
+* `T021` `done` - Implement Wikipedia search in shared code.
 * `T022` `planned` - Implement summary/article fetch in shared code.
 * `T023` `planned` - Implement deterministic article selection and evidence sufficiency rules.
 
