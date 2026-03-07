@@ -48,11 +48,16 @@ class MediaWikiWikipediaClient(
     }
 
     override suspend fun fetchArticleSummary(title: String): WikipediaArticleSummary {
-        throw UnsupportedOperationException("Article summary fetch is implemented in task T022.")
+        val page = fetchPageContent(title = title, summaryOnly = true)
+        return page.toSummary(baseUrl = normalizedWikiBaseUrl)
     }
 
     override suspend fun fetchArticle(title: String): WikipediaArticle {
-        throw UnsupportedOperationException("Article fetch is implemented in task T022.")
+        val page = fetchPageContent(title = title, summaryOnly = false)
+        return WikipediaArticle(
+            summary = page.toSummary(baseUrl = normalizedWikiBaseUrl),
+            plainTextContent = normalizePageText(page.extract),
+        )
     }
 
     private fun SearchResultDto.toDomainModel(baseUrl: String): WikipediaSearchResult {
@@ -64,6 +69,48 @@ class MediaWikiWikipediaClient(
             canonicalUrl = buildCanonicalUrl(baseUrl = baseUrl, title = title),
             isDisambiguationHint = looksLikeDisambiguation(title = title, snippet = sanitizedSnippet),
         )
+    }
+
+    private suspend fun fetchPageContent(
+        title: String,
+        summaryOnly: Boolean,
+    ): QueryPageDto {
+        val normalizedTitle = title.trim()
+        require(normalizedTitle.isNotEmpty()) { "Wikipedia title must not be blank." }
+
+        val responseText =
+            httpClient.get("$normalizedWikiBaseUrl/w/api.php") {
+                parameter("action", "query")
+                parameter("titles", normalizedTitle)
+                parameter("redirects", "1")
+                parameter("prop", "extracts|info|pageimages|pageprops")
+                parameter("inprop", "url")
+                parameter("piprop", "thumbnail")
+                parameter("pithumbsize", SUMMARY_THUMBNAIL_SIZE)
+                parameter("ppprop", "disambiguation|description|wikibase-shortdesc")
+                parameter("explaintext", "1")
+                parameter("exsectionformat", "plain")
+                if (summaryOnly) {
+                    parameter("exintro", "1")
+                }
+                parameter("format", "json")
+                parameter("formatversion", FORMAT_VERSION)
+                parameter("origin", ALLOW_ALL_ORIGINS)
+            }.bodyAsText()
+
+        val response = apiJson.decodeFromString<PageQueryResponse>(responseText)
+        val page = response.query?.pages.orEmpty().firstOrNull()
+            ?: throw NoSuchElementException("Wikipedia page not found: $normalizedTitle")
+
+        if (page.missing == true) {
+            throw NoSuchElementException("Wikipedia page not found: ${page.title ?: normalizedTitle}")
+        }
+
+        if (page.invalidreason != null) {
+            throw IllegalArgumentException(page.invalidreason)
+        }
+
+        return page
     }
 
     private fun sanitizeSnippet(rawSnippet: String): String =
@@ -97,6 +144,15 @@ class MediaWikiWikipediaClient(
             ?.toString()
             ?: entity
     }
+
+    private fun normalizePageText(rawText: String): String =
+        rawText
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .lines()
+            .joinToString(separator = "\n") { line -> line.trimEnd() }
+            .replace(ThreeOrMoreLineBreaksPattern, "\n\n")
+            .trim()
 
     private fun buildCanonicalUrl(
         baseUrl: String,
@@ -147,6 +203,53 @@ class MediaWikiWikipediaClient(
             "may refer to:" in normalizedSnippet
     }
 
+    private fun QueryPageDto.toSummary(baseUrl: String): WikipediaArticleSummary {
+        val normalizedExtract = normalizePageText(extract)
+        val resolvedTitle = title ?: throw IllegalStateException("Wikipedia response did not include a title.")
+        val description =
+            pageprops["wikibase-shortdesc"]
+                ?: pageprops["description"]
+                ?: pageprops["wikibase_description"]
+
+        return WikipediaArticleSummary(
+            pageId = pageid,
+            title = resolvedTitle,
+            canonicalUrl = fullurl ?: buildCanonicalUrl(baseUrl = baseUrl, title = resolvedTitle),
+            description = description?.trim()?.ifBlank { null },
+            extract = normalizedExtract,
+            thumbnailUrl = thumbnail?.source,
+            isDisambiguation = "disambiguation" in pageprops || looksLikeDisambiguation(resolvedTitle, normalizedExtract),
+        )
+    }
+
+    @Serializable
+    private data class PageQueryResponse(
+        val query: PageQueryDto? = null,
+    )
+
+    @Serializable
+    private data class PageQueryDto(
+        val pages: List<QueryPageDto> = emptyList(),
+    )
+
+    @Serializable
+    private data class QueryPageDto(
+        @SerialName("pageid")
+        val pageid: Long? = null,
+        val title: String? = null,
+        val extract: String = "",
+        val fullurl: String? = null,
+        val thumbnail: ThumbnailDto? = null,
+        val pageprops: Map<String, String> = emptyMap(),
+        val missing: Boolean? = null,
+        val invalidreason: String? = null,
+    )
+
+    @Serializable
+    private data class ThumbnailDto(
+        val source: String,
+    )
+
     @Serializable
     private data class SearchResponse(
         val query: SearchQueryDto? = null,
@@ -171,6 +274,7 @@ class MediaWikiWikipediaClient(
         private const val ALLOW_ALL_ORIGINS = "*"
         private const val MIN_SEARCH_LIMIT = 1
         private const val MAX_SEARCH_LIMIT = 500
+        private const val SUMMARY_THUMBNAIL_SIZE = 320
 
         private val DefaultApiJson =
             Json {
@@ -180,6 +284,7 @@ class MediaWikiWikipediaClient(
         private val HtmlTagPattern = Regex("<[^>]+>")
         private val HtmlNumericEntityPattern = Regex("&#x?[0-9A-Fa-f]+;")
         private val WhitespacePattern = Regex("\\s+")
+        private val ThreeOrMoreLineBreaksPattern = Regex("\n{3,}")
     }
 }
 

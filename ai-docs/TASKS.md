@@ -36,7 +36,7 @@ Status legend:
 
 * `T020` `done` - Define `WikipediaClient` interfaces in shared code.
 * `T021` `done` - Implement Wikipedia search in shared code.
-* `T022` `planned` - Implement summary/article fetch in shared code.
+* `T022` `done` - Implement summary/article fetch in shared code.
 * `T023` `planned` - Implement deterministic article selection and evidence sufficiency rules.
 
 ## Phase 3: Agent workflow
