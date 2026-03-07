@@ -49,7 +49,7 @@ Status legend:
 
 ## Phase 4: Direct OpenAI platform wiring
 
-* `T040` `planned` - Define an `ApiKeyProvider` abstraction for platform-specific OpenAI key access.
+* `T040` `done` - Define an `ApiKeyProvider` abstraction for platform-specific OpenAI key access.
 * `T041` `planned` - Implement JVM key loading from local environment configuration.
 * `T042` `planned` - Implement WasmJS dev-only key provision flow.
 * `T043` `planned` - Implement shared `PlatformOpenAiGateway` that builds `simpleOpenAIExecutor(apiKey)`.
