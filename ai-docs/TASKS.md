@@ -20,10 +20,10 @@ Status legend:
 
 ## Phase 0: Repo foundation
 
-* `T001` `planned` - Create the target module layout for v1: `:shared` and `:composeApp`.
-* `T002` `planned` - Remove unused plain JS target and keep Desktop JVM + WasmJS only.
-* `T003` `planned` - Add Koog, serialization, and test dependencies with centralized version management.
-* `T004` `planned` - Add repository-local agent context files and keep them synchronized with implementation.
+* `T001` `done` - Create the target module layout for v1: `:shared` and `:composeApp`.
+* `T002` `done` - Remove unused plain JS target and keep Desktop JVM + WasmJS only.
+* `T003` `done` - Add Koog, serialization, and test dependencies with centralized version management.
+* `T004` `done` - Add repository-local agent context files and keep them synchronized with implementation.
 
 ## Phase 1: Domain and contracts
 
