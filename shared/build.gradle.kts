@@ -21,6 +21,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.koog.agents)
+            implementation(libs.koog.promptExecutor.llms.all)
+            implementation(libs.koog.promptExecutor.openai.client)
             implementation(libs.ktor.client.core)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)

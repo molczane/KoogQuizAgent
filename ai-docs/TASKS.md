@@ -52,7 +52,7 @@ Status legend:
 * `T040` `done` - Define an `ApiKeyProvider` abstraction for platform-specific OpenAI key access.
 * `T041` `done` - Implement JVM key loading from local environment configuration.
 * `T042` `done` - Implement WasmJS dev-only key provision flow.
-* `T043` `planned` - Implement shared `PlatformOpenAiGateway` that builds `simpleOpenAIExecutor(apiKey)`.
+* `T043` `done` - Implement shared `PlatformOpenAiGateway` that builds `simpleOpenAIExecutor(apiKey)`.
 * `T044` `planned` - Add clear missing-key and invalid-mode error states in the UI/application layer.
 
 ## Phase 5: Compose UI
