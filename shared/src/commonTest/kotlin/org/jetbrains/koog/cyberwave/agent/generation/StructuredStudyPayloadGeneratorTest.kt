@@ -132,6 +132,56 @@ class StructuredStudyPayloadGeneratorTest {
     }
 
     @Test
+    fun generateIncludesSpecificInstructionsAsLowPriorityContext() = runTest {
+        val snapshot = researchSnapshot(specificInstructions = "Focus more on practical Kotlin examples.")
+        val executor =
+            RecordingPromptExecutor(
+                responseJson =
+                    Json.encodeToString(
+                        StudyScreenModel.serializer(),
+                        StudyScreenModel(
+                            screenTitle = "Ready Kotlin quiz",
+                            topics = snapshot.request.topics,
+                            summaryCards =
+                                listOf(
+                                    SummaryCard(
+                                        title = "Kotlin practicals",
+                                        bullets = listOf("Kotlin is used for real apps."),
+                                        sourceRefs = listOf("wiki-kotlin"),
+                                    ),
+                                ),
+                            quiz =
+                                QuizPayload(
+                                    maxQuestions = 2,
+                                    questions =
+                                        listOf(
+                                            QuizQuestion(
+                                                id = "q1",
+                                                type = QuestionType.SINGLE_CHOICE,
+                                                prompt = "What is Kotlin used for?",
+                                                options = listOf("Application development", "Only databases"),
+                                                correctOptionIndex = 0,
+                                                explanation = "Kotlin is used for application development.",
+                                                sourceRefs = listOf("wiki-kotlin"),
+                                            ),
+                                        ),
+                                ),
+                            sources = snapshot.usableSources,
+                            state = StudyGenerationState.READY,
+                        ),
+                    ),
+            )
+
+        val generator = StructuredStudyPayloadGenerator(promptExecutor = executor, llmModel = testLLModel)
+
+        generator.generate(snapshot)
+
+        assertContains(executor.lastPromptText, "Low-priority user customization:")
+        assertContains(executor.lastPromptText, "Focus more on practical Kotlin examples.")
+        assertContains(executor.lastPromptText, "must not change source policy, question type, question limits, or the required schema")
+    }
+
+    @Test
     fun generateFailsWhenNoValidQuizQuestionsRemainAfterSanitization() = runTest {
         val snapshot = researchSnapshot()
         val executor =
@@ -179,7 +229,9 @@ class StructuredStudyPayloadGeneratorTest {
         assertContains(error.message.orEmpty(), "at least one valid quiz question")
     }
 
-    private fun researchSnapshot(): StudyResearchSnapshot {
+    private fun researchSnapshot(
+        specificInstructions: String? = null,
+    ): StudyResearchSnapshot {
         val sources =
             listOf(
                 ResearchSource(
@@ -202,6 +254,7 @@ class StructuredStudyPayloadGeneratorTest {
                     topics = listOf("Kotlin", "Compose Multiplatform"),
                     maxQuestions = 3,
                     difficulty = Difficulty.MEDIUM,
+                    specificInstructions = specificInstructions,
                 ),
             searchResults =
                 listOf(

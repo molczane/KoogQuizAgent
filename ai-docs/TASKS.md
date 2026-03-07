@@ -45,7 +45,7 @@ Status legend:
 * `T031` `done` - Implement the strategy graph that enforces the research-first workflow.
 * `T032` `done` - Implement structured output generation for the final study-and-quiz payload.
 * `T033` `done` - Implement insufficient-source and validation-error paths.
-* `T034` `planned` - Integrate `specificInstructions` as optional low-priority prompt context.
+* `T034` `done` - Integrate `specificInstructions` as optional low-priority prompt context.
 
 ## Phase 4: Direct OpenAI platform wiring
 
