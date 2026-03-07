@@ -30,7 +30,7 @@ Status legend:
 * `T010` `done` - Define domain models for study requests, difficulty, sources, summaries, quiz questions, and result states.
 * `T011` `done` - Implement parsing and validation for `topicsText`, `maxQuestions`, and `specificInstructions`.
 * `T012` `done` - Define the structured UI payload schema used by the app.
-* `T013` `planned` - Define shared UI state models and state transitions.
+* `T013` `done` - Define shared UI state models and state transitions.
 
 ## Phase 2: Wikipedia integration
 
