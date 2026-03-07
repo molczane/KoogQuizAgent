@@ -33,5 +33,8 @@ kotlin {
         jvmTest.dependencies {
             implementation(libs.kotlin.testJunit)
         }
+        wasmJsMain.dependencies {
+            implementation(libs.kotlinx.browser)
+        }
     }
 }
