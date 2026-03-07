@@ -2,46 +2,52 @@
 
 ## Core rule
 
-The OpenAI API key must exist only in the JVM Ktor backend.
+The OpenAI API key must never be committed to the repository.
 
 It must never be:
 
 * committed to the repository
-* embedded in the Desktop app bundle
-* embedded in the WasmJS bundle
 * stored in shared resources
 * logged in plaintext
 
-## Backend requirements
+## Active mode: local direct execution
 
-The `:server` module must:
+The current repository plan allows direct OpenAI access on both JVM and WasmJS for **local development only**.
 
-* read `OPENAI_API_KEY` from environment configuration
-* expose a narrow proxy API
-* use a model allowlist
-* apply sensible timeouts
-* sanitize logs
-* return safe error payloads
+This is acceptable only because the project is currently intended for local testing and multiplatform demo purposes.
 
-The backend should not be a generic unrestricted pass-through if a narrower contract is enough.
+This is **not** an acceptable production or public deployment security model for the web.
 
 ## Client requirements
 
 ### WasmJS
 
-WasmJS must always use `ProxyLlmGateway`.
+WasmJS may use a direct OpenAI key in the current local-only mode.
 
-There is no acceptable v1 case where the browser receives the OpenAI key.
+That means:
+
+* the key can be exposed to the browser
+* the mode must be treated as insecure
+* the key must never be committed
+* the app must clearly be understood as local-only when using this mode
+
+Recommended dev-only approaches:
+
+* manual runtime entry of the key
+* ignored local config file not checked into git
+
+Avoid:
+
+* hardcoding the key in source
+* committing the key in resources or config files intended for version control
 
 ### Desktop JVM
 
-Desktop should default to `ProxyLlmGateway` too.
+Desktop may use a direct OpenAI key in local development.
 
-`DirectOpenAiGateway` is allowed only for local developer testing and must be:
+Recommended approach:
 
-* JVM-only
-* opt-in
-* clearly separated from default behavior
+* read `OPENAI_API_KEY` from environment variables
 
 ## Wikipedia access
 
@@ -100,7 +106,18 @@ Do not silently fall back to hallucinated content.
 
 ## Future hardening
 
-Out of scope for v1, but worth keeping in mind:
+If the project later adds secure web support, introduce a JVM Ktor backend and switch WasmJS to proxy mode.
+
+That future backend should:
+
+* read `OPENAI_API_KEY` from environment configuration
+* expose a narrow proxy API
+* use a model allowlist
+* apply sensible timeouts
+* sanitize logs
+* return safe error payloads
+
+Additional hardening worth keeping in mind:
 
 * rate limiting
 * authentication

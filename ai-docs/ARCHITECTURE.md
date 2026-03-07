@@ -7,7 +7,7 @@ Build a clean, reviewable KMP application that:
 * runs on Desktop JVM and WasmJS
 * uses Koog in shared KMP code
 * researches Wikipedia before generating content
-* keeps the OpenAI key only in a JVM Ktor backend
+* runs the Koog agent directly on both platforms in local development
 * renders the UI from structured data only
 
 ## Planned module layout
@@ -41,7 +41,7 @@ Responsibilities:
 * results screen
 * target entry points for JVM and WasmJS
 
-### `:server`
+### Optional future `:server`
 
 JVM-only Ktor backend.
 
@@ -52,7 +52,7 @@ Responsibilities:
 * configure timeouts, retries, logging, and model allowlist
 * never expose the API key to clients
 
-This module is infrastructure only. It is not a third product target.
+This module is not part of the active v1 plan. It is a future hardening option.
 
 ## Boundary rules
 
@@ -78,17 +78,15 @@ The UI must not:
 * contain quiz correctness logic
 * construct ad hoc JSON payloads
 
-### Server layer
+### Future server layer
 
-The server is responsible for secure OpenAI access only.
+If a secure web mode is added later, the server should be responsible for secure OpenAI access only.
 
-For v1, the server should not:
+It should not:
 
 * own the Wikipedia workflow
 * render any UI
 * contain product-specific quiz logic
-
-If stronger server-side enforcement is needed later, the Koog workflow can move to the backend in a future version.
 
 ## Source set expectations
 
@@ -114,7 +112,8 @@ Put these here:
 Put these here only when platform-specific:
 
 * HTTP engine wiring
-* optional `DirectOpenAiGateway`
+* platform API key provider
+* `PlatformOpenAiGateway` wiring
 * desktop app entry
 
 ### `wasmJsMain`
@@ -122,6 +121,8 @@ Put these here only when platform-specific:
 Put these here only when platform-specific:
 
 * HTTP engine wiring
+* dev-only platform API key provider
+* `PlatformOpenAiGateway` wiring
 * wasm app entry
 
 ## Suggested package layout
@@ -151,7 +152,7 @@ Suggested meaning:
    * select articles
    * fetch content
    * generate structured summary and quiz
-4. LLM calls go through `ProxyLlmGateway` to the Ktor server.
+4. LLM calls go through `PlatformOpenAiGateway` using a platform-provided `apiKey`.
 5. Wikipedia calls go directly to MediaWiki from the shared client implementation.
 6. Shared code returns a structured screen model.
 7. UI renders summary and exposes `Start the quiz`.
@@ -162,8 +163,8 @@ Suggested meaning:
 
 Required implementations:
 
-* `ProxyLlmGateway`
-* `DirectOpenAiGateway` for JVM-only local development
+* `PlatformOpenAiGateway` for direct local execution on JVM and WasmJS
+* `ProxyLlmGateway` as an optional future secure mode
 
 ### `WikipediaClient`
 
@@ -185,6 +186,16 @@ Output:
 
 * structured result or failure state
 
+### `ApiKeyProvider`
+
+Recommended platform abstraction for obtaining the OpenAI key.
+
+Expected behavior:
+
+* JVM provider reads from environment or local developer configuration
+* WasmJS provider reads from a dev-only local source
+* no implementation should commit secrets to the repository
+
 ## Architectural constraints
 
 * Remove the plain `js` target if it is not used.
@@ -193,3 +204,4 @@ Output:
 * Treat `specificInstructions` as optional prompt guidance, not a way to override system rules.
 * Keep the agent workflow deterministic where possible.
 * Prefer explicit nodes and transitions over large monolithic agent prompts.
+* Treat WasmJS direct-key support as local-only and non-production.

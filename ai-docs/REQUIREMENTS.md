@@ -25,10 +25,27 @@ For **v1**, these decisions are frozen:
 * **Wikipedia only**
 * **No MCP in v1**
 * **User-facing targets only:** Desktop JVM and WasmJS
-* **One JVM backend module using Ktor** for OpenAI proxying
 * **Structured JSON output only**
 * **Single-choice only**
 * **Form-based input**, not free-form prompt parsing
+* **Local direct OpenAI mode** on both JVM and WasmJS for development/testing
+
+## Execution mode
+
+The active implementation mode for this repository is:
+
+* **`localDirect`** — the Koog agent runs directly on Desktop JVM and WasmJS using `simpleOpenAIExecutor(apiKey)`
+
+In this mode:
+
+* the shared workflow is the same on both platforms
+* the `apiKey` is obtained differently per platform
+* the WasmJS setup is acceptable for **local development only**
+* this mode is **not** a secure deployment model for the web
+
+A future hardening mode may be added later:
+
+* **`secureProxy`** — a JVM Ktor backend hosts or proxies OpenAI access for web safely
 
 ## Architecture requirements
 
@@ -38,9 +55,10 @@ The planned module split is:
 
 * `:shared` — KMP shared business logic, agent strategy, domain models, state models, interfaces
 * `:composeApp` — Compose Multiplatform UI shell and target entry points
-* `:server` — JVM-only Ktor backend for secure OpenAI access
 
-The Ktor backend is infrastructure, not a third end-user app target.
+An optional future module may be added later:
+
+* `:server` — JVM-only Ktor backend for secure OpenAI access
 
 ### 2. Shared code
 
@@ -69,10 +87,17 @@ The shared agent flow should be identical on JVM and WasmJS.
 
 Define an `LlmGateway` abstraction with two implementations:
 
-* `ProxyLlmGateway` — default, used by both JVM and WasmJS
-* `DirectOpenAiGateway` — optional, JVM-only for local developer testing
+* `PlatformOpenAiGateway` — default, used by both JVM and WasmJS in `localDirect` mode
+* `ProxyLlmGateway` — optional future implementation for `secureProxy` mode
 
-For the workshop starter, `ProxyLlmGateway` should be the default everywhere, because OpenAI keys must stay server-side. The `:server` module must use **Ktor**. ([OpenAI Platform][2])
+`PlatformOpenAiGateway` should wrap `simpleOpenAIExecutor(apiKey)`.
+
+The `apiKey` must be provided differently per platform:
+
+* JVM: typically from `OPENAI_API_KEY`
+* WasmJS: from a dev-only local source, such as runtime entry or ignored local config
+
+For this workshop starter, `PlatformOpenAiGateway` is the default everywhere because the goal is to demonstrate Koog running directly on both platforms. If a secure web mode is added later, the `:server` module should use **Ktor**. ([OpenAI Platform][2])
 
 ### 5. Wikipedia access
 
@@ -267,7 +292,7 @@ These requirements matter to whoever implements the app:
 
 This version should also be optimized for participants:
 
-* zero extra API keys besides the instructor-controlled OpenAI backend
+* one OpenAI API key for local development/testing
 * no OAuth
 * no MCP setup
 * same repository works for Desktop JVM and WasmJS
@@ -290,21 +315,21 @@ Success is defined as follows:
 4. The final output validates against a strict schema. ([Koog][5])
 5. The number of questions never exceeds `maxQuestions`.
 6. Every question includes at least one source reference.
-7. The WasmJS app never contains an OpenAI API key. ([OpenAI Platform][2])
-8. The server module uses Ktor for OpenAI proxying.
+7. The repository never commits an OpenAI API key.
+8. The WasmJS direct-key mode is clearly documented as **local-only / insecure for deployment**. ([OpenAI Platform][2])
 9. The shared code uses multiplatform-safe tools, not JVM-only annotation tooling. ([Koog][6])
 
 ## Strongest recommendation
 
 Freeze v1 at:
 
-**one shared research-to-quiz agent + Wikipedia-only retrieval + structured UI payload + Ktor OpenAI proxy**
+**one shared research-to-quiz agent + Wikipedia-only retrieval + structured UI payload + direct local OpenAI execution on JVM and WasmJS**
 
-That is small enough to finish, stable enough for a workshop, and still demonstrates the interesting part: **one Koog-based KMP agent running on two targets, researching live information before generating a quiz**. ([Koog][1])
+That is small enough to finish, stable enough for a workshop, and still demonstrates the interesting part: **one Koog-based KMP agent running on two targets, researching live information before generating a quiz**. A secure Ktor-backed web mode can be added later if needed. ([Koog][1])
 
 [1]: https://docs.koog.ai/key-features/?utm_source=chatgpt.com "Key features - Koog"
 [2]: https://platform.openai.com/docs/api-reference/introduction/how-openai-works?utm_source=chatgpt.com "API Reference - OpenAI API"
-[3]: https://docs.koog.ai/ktor-plugin/?utm_source=chatgpt.com "Ktor - Koog"
+[3]: https://docs.koog.ai/model-context-protocol/?utm_source=chatgpt.com "Model Context Protocol - Koog"
 [4]: https://www.mediawiki.org/wiki/API%3ASearch/en?utm_source=chatgpt.com "API:Search - MediaWiki"
 [5]: https://docs.koog.ai/structured-output/?utm_source=chatgpt.com "Structured output - Koog"
 [6]: https://docs.koog.ai/annotation-based-tools/?utm_source=chatgpt.com "Annotation-based tools - Koog"

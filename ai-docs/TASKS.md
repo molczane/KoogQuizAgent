@@ -20,9 +20,9 @@ Status legend:
 
 ## Phase 0: Repo foundation
 
-* `T001` `planned` - Create the target module layout: `:shared`, `:composeApp`, `:server`.
+* `T001` `planned` - Create the target module layout for v1: `:shared` and `:composeApp`.
 * `T002` `planned` - Remove unused plain JS target and keep Desktop JVM + WasmJS only.
-* `T003` `planned` - Add Koog, Ktor, serialization, and test dependencies with centralized version management.
+* `T003` `planned` - Add Koog, serialization, and test dependencies with centralized version management.
 * `T004` `planned` - Add repository-local agent context files and keep them synchronized with implementation.
 
 ## Phase 1: Domain and contracts
@@ -47,13 +47,13 @@ Status legend:
 * `T033` `planned` - Implement insufficient-source and validation-error paths.
 * `T034` `planned` - Integrate `specificInstructions` as optional low-priority prompt context.
 
-## Phase 4: Ktor backend
+## Phase 4: Direct OpenAI platform wiring
 
-* `T040` `planned` - Create the `:server` Ktor module and basic configuration.
-* `T041` `planned` - Implement the OpenAI proxy endpoint(s) and environment-based key loading.
-* `T042` `planned` - Add timeout, retry, model allowlist, and safe logging behavior.
-* `T043` `planned` - Implement the shared `ProxyLlmGateway` client against the Ktor API.
-* `T044` `planned` - Add optional JVM-only `DirectOpenAiGateway` for local development.
+* `T040` `planned` - Define an `ApiKeyProvider` abstraction for platform-specific OpenAI key access.
+* `T041` `planned` - Implement JVM key loading from local environment configuration.
+* `T042` `planned` - Implement WasmJS dev-only key provision flow.
+* `T043` `planned` - Implement shared `PlatformOpenAiGateway` that builds `simpleOpenAIExecutor(apiKey)`.
+* `T044` `planned` - Add clear missing-key and invalid-mode error states in the UI/application layer.
 
 ## Phase 5: Compose UI
 
@@ -69,7 +69,13 @@ Status legend:
 * `T061` `planned` - Add Koog graph tests using mock LLM/tool facilities.
 * `T062` `planned` - Add contract tests for the structured output schema.
 * `T063` `planned` - Add OpenTelemetry or equivalent tracing hooks suitable for Koog workflows.
-* `T064` `planned` - Add regression checks that ensure no client artifact contains the OpenAI key.
+* `T064` `planned` - Add regression checks that ensure no OpenAI key is committed and the local-only web mode is documented.
+
+## Phase 7: Future hardening
+
+* `T070` `planned` - Add an optional `:server` Ktor module for secure web proxy mode.
+* `T071` `planned` - Implement `ProxyLlmGateway` against the Ktor API.
+* `T072` `planned` - Switch WasmJS to proxy mode for deployable secure web usage.
 
 ## Recommended first implementation slice
 
@@ -88,6 +94,6 @@ That creates a stable base before networking and agent work begin.
 
 * Does the change match `ai-docs/REQUIREMENTS.md`?
 * Does it preserve the shared workflow design?
-* Does it avoid leaking the OpenAI key?
+* Does it avoid committing or hardcoding the OpenAI key?
 * Does it keep the UI driven by structured models?
 * Does it include tests or explain the testing gap?

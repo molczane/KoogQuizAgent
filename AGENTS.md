@@ -22,9 +22,9 @@ User-facing targets:
 * Desktop JVM
 * WasmJS
 
-Infrastructure module:
+Active execution mode:
 
-* JVM Ktor backend for secure OpenAI proxying
+* direct local OpenAI execution on both JVM and WasmJS
 
 ## Non-negotiable rules
 
@@ -32,8 +32,8 @@ Infrastructure module:
 * Use class-based Koog tools only.
 * Use a strategy graph to enforce workflow order.
 * Do not let the model generate raw UI code.
-* Keep the OpenAI API key only in the Ktor backend.
-* WasmJS must never contain the OpenAI key.
+* Do not commit or hardcode the OpenAI API key.
+* Treat WasmJS direct-key execution as local-only and insecure for deployment.
 * Keep quiz type single-choice only in v1.
 * Treat `specificInstructions` as optional guidance, not an override of system rules.
 
@@ -42,7 +42,7 @@ Infrastructure module:
 * Prefer implementing one task from `ai-docs/TASKS.md` at a time.
 * Keep changes small and reviewable.
 * Update planning docs when architecture or scope decisions change.
-* Preserve clean boundaries between shared logic, UI, and server code.
+* Preserve clean boundaries between shared logic and UI.
 * Add tests with changes whenever practical.
 
 ## Review focus
