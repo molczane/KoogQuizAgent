@@ -81,6 +81,21 @@ class StudyUiStateReducerTest {
     }
 
     @Test
+    fun `generation completed with configuration error enters failure state`() {
+        val loadingState = validLoadingState()
+
+        val nextState =
+            StudyUiStateReducer.reduce(
+                loadingState,
+                StudyUiEvent.GenerationCompleted(screenModel = configurationErrorScreenModel()),
+            )
+
+        val failureState = assertIs<StudyUiState.Failure>(nextState)
+        assertEquals(StudyGenerationState.CONFIGURATION_ERROR, failureState.screenModel.state)
+        assertEquals("OpenAI key missing", failureState.screenModel.error?.title)
+    }
+
+    @Test
     fun `quiz flow advances to results after answering last question`() {
         val summaryState =
             assertIs<StudyUiState.Summary>(
@@ -280,6 +295,22 @@ class StudyUiStateReducerTest {
                 StudyScreenError(
                     title = "Need more sources",
                     message = "Wikipedia search did not return enough evidence to build a quiz.",
+                ),
+        )
+
+    private fun configurationErrorScreenModel(): StudyScreenModel =
+        StudyScreenModel(
+            screenTitle = "OpenAI setup required",
+            topics = listOf("Kotlin Coroutines"),
+            summaryCards = emptyList(),
+            quiz = null,
+            sources = emptyList(),
+            state = StudyGenerationState.CONFIGURATION_ERROR,
+            primaryAction = PrimaryAction(id = PrimaryActionId.RETRY, label = "Retry"),
+            error =
+                StudyScreenError(
+                    title = "OpenAI key missing",
+                    message = "Set OPENAI_API_KEY in your local configuration.",
                 ),
         )
 }

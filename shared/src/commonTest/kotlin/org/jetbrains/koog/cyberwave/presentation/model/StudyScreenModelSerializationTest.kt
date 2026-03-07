@@ -60,4 +60,18 @@ class StudyScreenModelSerializationTest {
         assertTrue(serialized.contains("\"ready\""))
         assertTrue(serialized.contains("\"start_quiz\""))
     }
+
+    @Test
+    fun serializesConfigurationErrorStateValue() {
+        val payload =
+            StudyScreenModel(
+                screenTitle = "OpenAI setup required",
+                topics = emptyList(),
+                state = StudyGenerationState.CONFIGURATION_ERROR,
+            )
+
+        val serialized = json.encodeToString(StudyScreenModel.serializer(), payload)
+
+        assertTrue(serialized.contains("\"configuration_error\""))
+    }
 }

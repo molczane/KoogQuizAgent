@@ -53,7 +53,7 @@ Status legend:
 * `T041` `done` - Implement JVM key loading from local environment configuration.
 * `T042` `done` - Implement WasmJS dev-only key provision flow.
 * `T043` `done` - Implement shared `PlatformOpenAiGateway` that builds `simpleOpenAIExecutor(apiKey)`.
-* `T044` `planned` - Add clear missing-key and invalid-mode error states in the UI/application layer.
+* `T044` `done` - Add clear missing-key and invalid-mode error states in the UI/application layer.
 
 ## Phase 5: Compose UI
 

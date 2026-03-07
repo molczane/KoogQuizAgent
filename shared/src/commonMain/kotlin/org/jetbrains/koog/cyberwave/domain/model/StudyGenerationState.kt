@@ -11,6 +11,9 @@ enum class StudyGenerationState {
     @SerialName("insufficient_sources")
     INSUFFICIENT_SOURCES,
 
+    @SerialName("configuration_error")
+    CONFIGURATION_ERROR,
+
     @SerialName("validation_error")
     VALIDATION_ERROR,
 }
