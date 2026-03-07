@@ -41,7 +41,7 @@ Status legend:
 
 ## Phase 3: Agent workflow
 
-* `T030` `planned` - Define class-based Koog tools for Wikipedia search and fetch operations.
+* `T030` `done` - Define class-based Koog tools for Wikipedia search and fetch operations.
 * `T031` `planned` - Implement the strategy graph that enforces the research-first workflow.
 * `T032` `planned` - Implement structured output generation for the final study-and-quiz payload.
 * `T033` `planned` - Implement insufficient-source and validation-error paths.
