@@ -24,7 +24,7 @@ class StudyGenerationService(
     private val tracer: StudyWorkflowTracer = NoOpStudyWorkflowTracer,
 ) {
     private val researchStrategy = StudyResearchWorkflow.strategy(wikipediaClient, tracer)
-    private val toolRegistry = wikipediaToolRegistry(wikipediaClient)
+    private val toolRegistry = wikipediaToolRegistry(wikipediaClient, tracer)
     private val payloadGenerator =
         StructuredStudyPayloadGenerator(
             promptExecutor = promptExecutor,

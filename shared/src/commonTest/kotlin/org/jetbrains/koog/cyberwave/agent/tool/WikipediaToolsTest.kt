@@ -5,6 +5,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlinx.coroutines.test.runTest
+import org.jetbrains.koog.cyberwave.observability.RecordingStudyWorkflowTracer
+import org.jetbrains.koog.cyberwave.observability.StudyWorkflowTraceStatus
 import org.jetbrains.koog.cyberwave.data.wikipedia.WikipediaClient
 import org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticle
 import org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticleSummary
@@ -103,6 +105,55 @@ class WikipediaToolsTest {
 
             assertEquals("Coroutine", client.lastArticleTitle)
             assertEquals(article, result)
+        }
+
+    @Test
+    fun `tools emit tracer events for monitoring`() =
+        runTest {
+            val tracer = RecordingStudyWorkflowTracer()
+            val client =
+                FakeWikipediaClient(
+                    searchResults =
+                        listOf(
+                            WikipediaSearchResult(
+                                pageId = 736,
+                                title = "Coroutine",
+                                snippet = "A coroutine is a generalized subroutine.",
+                                canonicalUrl = "https://en.wikipedia.org/wiki/Coroutine",
+                            ),
+                        ),
+                    article =
+                        WikipediaArticle(
+                            summary =
+                                WikipediaArticleSummary(
+                                    pageId = 736,
+                                    title = "Coroutine",
+                                    canonicalUrl = "https://en.wikipedia.org/wiki/Coroutine",
+                                    description = "Program component",
+                                    extract = "A coroutine is a generalized subroutine.",
+                                    thumbnailUrl = null,
+                                    isDisambiguation = false,
+                                ),
+                            plainTextContent = "A coroutine is a generalized subroutine used for cooperative multitasking.",
+                        ),
+                )
+
+            SearchWikipediaTool(client, tracer).execute(SearchWikipediaTool.Args(topic = "Coroutine", limit = 3))
+            FetchWikipediaArticleTool(client, tracer).execute(FetchWikipediaArticleTool.Args(title = "Coroutine"))
+
+            assertEquals(
+                listOf(
+                    "study_generation.tool.search_wikipedia:${StudyWorkflowTraceStatus.STARTED}",
+                    "study_generation.tool.search_wikipedia:${StudyWorkflowTraceStatus.SUCCEEDED}",
+                    "study_generation.tool.fetch_wikipedia_article:${StudyWorkflowTraceStatus.STARTED}",
+                    "study_generation.tool.fetch_wikipedia_article:${StudyWorkflowTraceStatus.SUCCEEDED}",
+                ),
+                tracer.events.map { event -> "${event.spanName}:${event.status}" },
+            )
+            assertEquals("Coroutine", tracer.events[0].attributes["topic"])
+            assertEquals("1", tracer.events[1].attributes["result_count"])
+            assertEquals("Coroutine", tracer.events[2].attributes["title"])
+            assertEquals("Coroutine", tracer.events[3].attributes["resolved_title"])
         }
 
     @Test

@@ -5,6 +5,9 @@ import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import org.jetbrains.koog.cyberwave.observability.NoOpStudyWorkflowTracer
+import org.jetbrains.koog.cyberwave.observability.StudyWorkflowTracer
+import org.jetbrains.koog.cyberwave.observability.traceSpan
 import org.jetbrains.koog.cyberwave.application.research.WikipediaResearchPolicy
 import org.jetbrains.koog.cyberwave.data.wikipedia.WikipediaClient
 import org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticle
@@ -13,6 +16,7 @@ import org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaSearchResult
 
 class SearchWikipediaTool(
     private val wikipediaClient: WikipediaClient,
+    private val tracer: StudyWorkflowTracer = NoOpStudyWorkflowTracer,
 ) : Tool<SearchWikipediaTool.Args, SearchWikipediaTool.Result>(
         argsSerializer = Args.serializer(),
         resultSerializer = Result.serializer(),
@@ -54,11 +58,27 @@ class SearchWikipediaTool(
     )
 
     override suspend fun execute(args: Args): Result =
-        Result(
-            topic = args.topic.trim(),
-            limit = args.limit,
-            results = wikipediaClient.search(query = args.topic, limit = args.limit),
-        )
+        tracer.traceSpan(
+            name = "study_generation.tool.search_wikipedia",
+            attributes =
+                mapOf(
+                    "tool_name" to NAME,
+                    "topic" to args.topic.trim(),
+                    "limit" to args.limit.toString(),
+                ),
+            successAttributes = { result ->
+                mapOf(
+                    "result_count" to result.results.size.toString(),
+                    "has_results" to result.results.isNotEmpty().toString(),
+                )
+            },
+        ) {
+            Result(
+                topic = args.topic.trim(),
+                limit = args.limit,
+                results = wikipediaClient.search(query = args.topic, limit = args.limit),
+            )
+        }
 
     companion object {
         const val NAME: String = "search_wikipedia"
@@ -67,6 +87,7 @@ class SearchWikipediaTool(
 
 class FetchWikipediaSummaryTool(
     private val wikipediaClient: WikipediaClient,
+    private val tracer: StudyWorkflowTracer = NoOpStudyWorkflowTracer,
 ) : Tool<FetchWikipediaSummaryTool.Args, WikipediaArticleSummary>(
         argsSerializer = Args.serializer(),
         resultSerializer = WikipediaArticleSummary.serializer(),
@@ -90,7 +111,23 @@ class FetchWikipediaSummaryTool(
     }
 
     override suspend fun execute(args: Args): WikipediaArticleSummary =
-        wikipediaClient.fetchArticleSummary(title = args.title)
+        tracer.traceSpan(
+            name = "study_generation.tool.fetch_wikipedia_summary",
+            attributes =
+                mapOf(
+                    "tool_name" to NAME,
+                    "title" to args.title.trim(),
+                ),
+            successAttributes = { summary ->
+                mapOf(
+                    "resolved_title" to summary.title,
+                    "page_id" to summary.pageId?.toString().orEmpty().ifBlank { "unknown" },
+                    "is_disambiguation" to summary.isDisambiguation.toString(),
+                )
+            },
+        ) {
+            wikipediaClient.fetchArticleSummary(title = args.title)
+        }
 
     companion object {
         const val NAME: String = "fetch_wikipedia_summary"
@@ -99,6 +136,7 @@ class FetchWikipediaSummaryTool(
 
 class FetchWikipediaArticleTool(
     private val wikipediaClient: WikipediaClient,
+    private val tracer: StudyWorkflowTracer = NoOpStudyWorkflowTracer,
 ) : Tool<FetchWikipediaArticleTool.Args, WikipediaArticle>(
         argsSerializer = Args.serializer(),
         resultSerializer = WikipediaArticle.serializer(),
@@ -122,16 +160,35 @@ class FetchWikipediaArticleTool(
     }
 
     override suspend fun execute(args: Args): WikipediaArticle =
-        wikipediaClient.fetchArticle(title = args.title)
+        tracer.traceSpan(
+            name = "study_generation.tool.fetch_wikipedia_article",
+            attributes =
+                mapOf(
+                    "tool_name" to NAME,
+                    "title" to args.title.trim(),
+                ),
+            successAttributes = { article ->
+                mapOf(
+                    "resolved_title" to article.summary.title,
+                    "page_id" to article.summary.pageId?.toString().orEmpty().ifBlank { "unknown" },
+                    "content_length" to article.plainTextContent.length.toString(),
+                )
+            },
+        ) {
+            wikipediaClient.fetchArticle(title = args.title)
+        }
 
     companion object {
         const val NAME: String = "fetch_wikipedia_article"
     }
 }
 
-fun wikipediaToolRegistry(wikipediaClient: WikipediaClient): ToolRegistry =
+fun wikipediaToolRegistry(
+    wikipediaClient: WikipediaClient,
+    tracer: StudyWorkflowTracer = NoOpStudyWorkflowTracer,
+): ToolRegistry =
     ToolRegistry {
-        tool(SearchWikipediaTool(wikipediaClient))
-        tool(FetchWikipediaSummaryTool(wikipediaClient))
-        tool(FetchWikipediaArticleTool(wikipediaClient))
+        tool(SearchWikipediaTool(wikipediaClient, tracer))
+        tool(FetchWikipediaSummaryTool(wikipediaClient, tracer))
+        tool(FetchWikipediaArticleTool(wikipediaClient, tracer))
     }

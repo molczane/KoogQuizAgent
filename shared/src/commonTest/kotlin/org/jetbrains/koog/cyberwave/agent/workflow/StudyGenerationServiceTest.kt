@@ -125,6 +125,14 @@ class StudyGenerationServiceTest {
             tracer.events.map { event -> "${event.spanName}:${event.status}" },
             "study_generation.payload.generate:${StudyWorkflowTraceStatus.SUCCEEDED}",
         )
+        assertContains(
+            tracer.events.map { event -> "${event.spanName}:${event.status}" },
+            "study_generation.tool.search_wikipedia:${StudyWorkflowTraceStatus.SUCCEEDED}",
+        )
+        assertContains(
+            tracer.events.map { event -> "${event.spanName}:${event.status}" },
+            "study_generation.tool.fetch_wikipedia_article:${StudyWorkflowTraceStatus.SUCCEEDED}",
+        )
         assertEquals(
             listOf(
                 "study_generation.research.validate_input",
