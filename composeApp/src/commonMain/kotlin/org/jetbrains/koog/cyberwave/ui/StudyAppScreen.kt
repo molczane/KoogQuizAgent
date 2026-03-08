@@ -105,29 +105,21 @@ fun StudyAppScreen(
             )
 
         is StudyUiState.QuizResults ->
-            StagePlaceholderScreen(
+            ResultsScreen(
                 modifier = modifier,
-                eyebrow = "RESULTS",
-                title = "Results view is next",
-                message = "Scoring is ready in shared code. The dedicated results UI lands in the next slices.",
-                supportingNote = "Answered ${uiState.results.questionResults.count { it.selectedOptionIndex != null }} question(s).",
-                actionLabel = "Back to request",
-                onAction = { onEvent(StudyUiEvent.ReturnToInput) },
+                form = uiState.form,
+                screenModel = uiState.screenModel,
+                results = uiState.results,
+                onRestartQuiz = { onEvent(StudyUiEvent.RestartQuiz) },
+                onReturnToInput = { onEvent(StudyUiEvent.ReturnToInput) },
             )
 
         is StudyUiState.Failure ->
-            StagePlaceholderScreen(
+            FailureScreen(
                 modifier = modifier,
-                eyebrow = "ERROR STATE",
-                title = uiState.screenModel.error?.title ?: uiState.screenModel.screenTitle,
-                message = uiState.screenModel.error?.message ?: "The failure screen will be expanded in the next task.",
-                supportingNote = "Action: ${uiState.screenModel.primaryAction?.label ?: "Retry"}",
-                actionLabel =
-                    when (uiState.screenModel.primaryAction?.id) {
-                        PrimaryActionId.RETRY -> "Back to request"
-                        else -> "Back to request"
-                    },
-                onAction = { onEvent(StudyUiEvent.ReturnToInput) },
+                form = uiState.form,
+                screenModel = uiState.screenModel,
+                onReturnToInput = { onEvent(StudyUiEvent.ReturnToInput) },
             )
     }
 }
@@ -736,6 +728,570 @@ private fun QuizSourcesPanel(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+private fun ResultsScreen(
+    form: StudyFormState,
+    screenModel: StudyScreenModel,
+    results: org.jetbrains.koog.cyberwave.presentation.state.QuizResultsState,
+    onRestartQuiz: () -> Unit,
+    onReturnToInput: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val sourcesById = remember(screenModel.sources) { screenModel.sources.associateBy(ResearchSource::id) }
+
+    BoxWithConstraints(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .safeContentPadding(),
+    ) {
+        val wideLayout = maxWidth >= 1040.dp
+        val containerPadding = if (wideLayout) PaddingValues(36.dp) else PaddingValues(horizontal = 18.dp, vertical = 24.dp)
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = containerPadding,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            item {
+                ResultsHero(
+                    form = form,
+                    screenModel = screenModel,
+                    results = results,
+                )
+            }
+
+            item {
+                if (wideLayout) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        QuestionResultsSection(
+                            results = results,
+                            sourcesById = sourcesById,
+                            modifier = Modifier.weight(1.2f),
+                        )
+                        ResultsActionPanel(
+                            results = results,
+                            onRestartQuiz = onRestartQuiz,
+                            onReturnToInput = onReturnToInput,
+                            modifier = Modifier.weight(0.8f),
+                        )
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        ResultsActionPanel(
+                            results = results,
+                            onRestartQuiz = onRestartQuiz,
+                            onReturnToInput = onReturnToInput,
+                        )
+                        QuestionResultsSection(
+                            results = results,
+                            sourcesById = sourcesById,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FailureScreen(
+    form: StudyFormState,
+    screenModel: StudyScreenModel,
+    onReturnToInput: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val error = screenModel.error
+    val uriHandler = LocalUriHandler.current
+
+    BoxWithConstraints(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .safeContentPadding(),
+    ) {
+        val wideLayout = maxWidth >= 1040.dp
+        val containerPadding = if (wideLayout) PaddingValues(36.dp) else PaddingValues(horizontal = 18.dp, vertical = 24.dp)
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = containerPadding,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            item {
+                FailureHero(
+                    form = form,
+                    screenModel = screenModel,
+                )
+            }
+
+            item {
+                if (wideLayout) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1.1f),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                        ) {
+                            if (error != null) {
+                                FailureDetailsPanel(
+                                    error = error,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                            if (screenModel.sources.isNotEmpty()) {
+                                SourcesSection(
+                                    sources = screenModel.sources,
+                                    onOpenSource = uriHandler::openUri,
+                                )
+                            }
+                        }
+                        FailureActionPanel(
+                            screenModel = screenModel,
+                            onReturnToInput = onReturnToInput,
+                            modifier = Modifier.weight(0.9f),
+                        )
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        FailureActionPanel(
+                            screenModel = screenModel,
+                            onReturnToInput = onReturnToInput,
+                        )
+                        if (error != null) {
+                            FailureDetailsPanel(error = error)
+                        }
+                        if (screenModel.sources.isNotEmpty()) {
+                            SourcesSection(
+                                sources = screenModel.sources,
+                                onOpenSource = uriHandler::openUri,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ResultsHero(
+    form: StudyFormState,
+    screenModel: StudyScreenModel,
+    results: org.jetbrains.koog.cyberwave.presentation.state.QuizResultsState,
+    modifier: Modifier = Modifier,
+) {
+    val scorePercent =
+        if (results.totalQuestions == 0) {
+            0
+        } else {
+            (results.correctAnswers * 100) / results.totalQuestions
+        }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = Color.Transparent,
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .background(
+                        Brush.linearGradient(
+                            colors =
+                                listOf(
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f),
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f),
+                                ),
+                        ),
+                    )
+                    .padding(28.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            Text(
+                text = "QUIZ COMPLETE",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+            Text(
+                text = screenModel.screenTitle,
+                style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "You answered ${results.correctAnswers} out of ${results.totalQuestions} question(s) correctly.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                InsightBadge(text = "$scorePercent% score")
+                InsightBadge(text = "${results.answeredQuestions} answered")
+                InsightBadge(text = form.difficulty.label)
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuestionResultsSection(
+    results: org.jetbrains.koog.cyberwave.presentation.state.QuizResultsState,
+    sourcesById: Map<String, ResearchSource>,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            Text(
+                text = "Question review",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Correctness and explanations are shown only after the quiz finishes.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            results.questionResults.forEachIndexed { index, questionResult ->
+                QuestionResultCard(
+                    index = index + 1,
+                    questionResult = questionResult,
+                    sourcesById = sourcesById,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuestionResultCard(
+    index: Int,
+    questionResult: org.jetbrains.koog.cyberwave.presentation.state.QuizQuestionResult,
+    sourcesById: Map<String, ResearchSource>,
+) {
+    val selectedText =
+        questionResult.selectedOptionIndex
+            ?.let(questionResult.question.options::getOrNull)
+            ?: "No answer selected"
+    val correctText = questionResult.question.options.getOrNull(questionResult.question.correctOptionIndex).orEmpty()
+    val badgeText = if (questionResult.isCorrect) "Correct" else "Needs review"
+    val badgeColor = if (questionResult.isCorrect) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Question $index",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+                InsightBadge(text = badgeText)
+            }
+            Text(
+                text = questionResult.question.prompt,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            ResultLine(
+                label = "Your answer",
+                value = selectedText,
+                valueColor = badgeColor,
+            )
+            ResultLine(
+                label = "Correct answer",
+                value = correctText,
+                valueColor = MaterialTheme.colorScheme.primary,
+            )
+            ResultLine(
+                label = "Why",
+                value = questionResult.question.explanation,
+            )
+            if (questionResult.question.sourceRefs.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    questionResult.question.sourceRefs.forEach { sourceRef ->
+                        val title = sourcesById[sourceRef]?.title ?: sourceRef
+                        InsightBadge(text = title)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultLine(
+    label: String,
+    value: String,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge,
+            color = valueColor,
+        )
+    }
+}
+
+@Composable
+private fun ResultsActionPanel(
+    results: org.jetbrains.koog.cyberwave.presentation.state.QuizResultsState,
+    onRestartQuiz: () -> Unit,
+    onReturnToInput: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = "Next move",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            Text(
+                text = "Restart the quiz to try again, or return to the request form to generate a different lesson set.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            InsightBadge(text = "${results.correctAnswers}/${results.totalQuestions} correct")
+            Button(
+                onClick = onRestartQuiz,
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 22.dp, vertical = 16.dp),
+            ) {
+                Text("Restart quiz")
+            }
+            OutlinedButton(
+                onClick = onReturnToInput,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Back to request")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FailureHero(
+    form: StudyFormState,
+    screenModel: StudyScreenModel,
+    modifier: Modifier = Modifier,
+) {
+    val title = screenModel.error?.title ?: screenModel.screenTitle
+    val message = screenModel.error?.message ?: "The requested study session could not be produced."
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = Color.Transparent,
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .background(
+                        Brush.linearGradient(
+                            colors =
+                                listOf(
+                                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.88f),
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.75f),
+                                ),
+                        ),
+                    )
+                    .padding(28.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            Text(
+                text = "GENERATION STOPPED",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.error,
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (screenModel.topics.isNotEmpty()) {
+                    screenModel.topics.forEach { topic ->
+                        InsightBadge(text = topic)
+                    }
+                }
+                InsightBadge(text = form.difficulty.label)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FailureDetailsPanel(
+    error: org.jetbrains.koog.cyberwave.presentation.model.StudyScreenError,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = "What needs attention",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = error.message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (error.validationIssues.isNotEmpty()) {
+                error.validationIssues.forEach { issue ->
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = validationFieldLabel(issue.field),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.secondary,
+                            )
+                            Text(
+                                text = issue.message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FailureActionPanel(
+    screenModel: StudyScreenModel,
+    onReturnToInput: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.62f),
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = "Recover from this state",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                text = failureGuidance(screenModel),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Button(
+                onClick = onReturnToInput,
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 22.dp, vertical = 16.dp),
+            ) {
+                Text(screenModel.primaryAction?.label ?: "Back to request")
+            }
+            OutlinedButton(
+                onClick = onReturnToInput,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Edit request")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 private fun SummaryHero(
     form: StudyFormState,
     screenModel: StudyScreenModel,
@@ -1012,6 +1568,31 @@ private fun SourceRow(
 }
 
 private fun optionLetter(index: Int): String = ('A' + index).toString()
+
+private fun validationFieldLabel(field: String): String =
+    when (field) {
+        "topicsText" -> "Topics"
+        "maxQuestions" -> "Question count"
+        "specificInstructions" -> "Specific instructions"
+        else -> field
+    }
+
+private fun failureGuidance(screenModel: StudyScreenModel): String =
+    when (screenModel.state) {
+        org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.INSUFFICIENT_SOURCES ->
+            "Wikipedia evidence was too thin for the requested lesson. Narrow the topics or reduce the question count, then run generation again."
+
+        org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.CONFIGURATION_ERROR ->
+            "The local OpenAI setup is incomplete. Return to the request screen after fixing the key or local direct mode configuration."
+
+        org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.GENERATION_ERROR ->
+            "The local research or generation runtime failed before a stable payload was produced. Check network access and local AI configuration, then retry."
+
+        org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.VALIDATION_ERROR ->
+            "The request needs adjustment before generation can start. Review the flagged fields and submit again."
+
+        else -> "Return to the request form, adjust the input, and try again."
+    }
 
 @Composable
 private fun ResearchingScreen(
@@ -1457,82 +2038,6 @@ private fun FieldSupport(
     }
 }
 
-@Composable
-private fun StagePlaceholderScreen(
-    eyebrow: String,
-    title: String,
-    message: String,
-    supportingNote: String,
-    actionLabel: String,
-    onAction: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .safeContentPadding()
-                .padding(24.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors =
-                CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        ) {
-            Column(
-                modifier = Modifier.padding(28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f))
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                ) {
-                    Text(
-                        text = eyebrow,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                }
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                ) {
-                    Text(
-                        text = supportingNote,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-                    )
-                }
-                OutlinedButton(onClick = onAction) {
-                    Text(actionLabel)
-                }
-            }
-        }
-    }
-}
-
 private val Difficulty.label: String
     get() =
         when (this) {
@@ -1629,6 +2134,59 @@ private fun QuizScreenPreview() {
     }
 }
 
+@Preview
+@Composable
+private fun ResultsScreenPreview() {
+    val screenModel = previewSummaryScreenModel()
+    val quiz = requireNotNull(screenModel.quiz)
+
+    CyberWaveTheme {
+        StudyAppScreen(
+            uiState =
+                StudyUiState.QuizResults(
+                    form =
+                        StudyFormState(
+                            topicsText = "Kotlin Coroutines",
+                            maxQuestions = 4,
+                            difficulty = Difficulty.MEDIUM,
+                        ),
+                    screenModel = screenModel,
+                    results =
+                        org.jetbrains.koog.cyberwave.presentation.state.QuizResultsState(
+                            questionResults =
+                                quiz.questions.map { question ->
+                                    org.jetbrains.koog.cyberwave.presentation.state.QuizQuestionResult(
+                                        question = question,
+                                        selectedOptionIndex = if (question.id == "q1") 0 else question.correctOptionIndex,
+                                    )
+                                },
+                        ),
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun FailureScreenPreview() {
+    CyberWaveTheme {
+        StudyAppScreen(
+            uiState =
+                StudyUiState.Failure(
+                    form =
+                        StudyFormState(
+                            topicsText = "Kotlin Coroutines",
+                            maxQuestions = 6,
+                            difficulty = Difficulty.MEDIUM,
+                        ),
+                    screenModel = previewFailureScreenModel(),
+                ),
+            onEvent = {},
+        )
+    }
+}
+
 private fun previewSummaryScreenModel(): StudyScreenModel =
     StudyScreenModel(
         screenTitle = "Learn: Kotlin Coroutines",
@@ -1687,4 +2245,26 @@ private fun previewSummaryScreenModel(): StudyScreenModel =
             ),
         state = org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.READY,
         primaryAction = PrimaryAction(id = PrimaryActionId.START_QUIZ, label = "Start the quiz"),
+    )
+
+private fun previewFailureScreenModel(): StudyScreenModel =
+    StudyScreenModel(
+        screenTitle = "Not enough evidence yet",
+        topics = listOf("Kotlin Coroutines", "Structured concurrency"),
+        sources =
+            listOf(
+                ResearchSource(
+                    id = "src1",
+                    title = "Coroutine",
+                    url = "https://en.wikipedia.org/wiki/Coroutine",
+                    snippet = "General coroutine concepts and suspension behavior.",
+                ),
+            ),
+        state = org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.INSUFFICIENT_SOURCES,
+        primaryAction = PrimaryAction(id = PrimaryActionId.RETRY, label = "Retry"),
+        error =
+            org.jetbrains.koog.cyberwave.presentation.model.StudyScreenError(
+                title = "Wikipedia evidence is too limited",
+                message = "I could not support the requested number of questions from the available Wikipedia evidence.",
+            ),
     )
