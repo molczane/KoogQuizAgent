@@ -87,6 +87,7 @@ class ToolCallingSearchPromptExecutor(
 
     val emittedSearchToolTopics: MutableList<String> = mutableListOf()
     val emittedFetchToolTitles: MutableList<String> = mutableListOf()
+    val toolNamesByExecuteCall: MutableList<List<String>> = mutableListOf()
     var fetchStageCalls: Int = 0
         private set
     private var activeTopics: List<String>? = null
@@ -100,6 +101,7 @@ class ToolCallingSearchPromptExecutor(
         tools: List<ToolDescriptor>,
     ): List<Message.Response> {
         executeCalls += 1
+        toolNamesByExecuteCall += tools.map { descriptor -> descriptor.name }
 
         return when {
             tools.any { descriptor -> descriptor.name == SearchWikipediaTool.NAME } -> {

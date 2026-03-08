@@ -53,7 +53,7 @@ Status legend:
 * `T036` `done` - Refactor the search stage so the LLM requests Wikipedia searches through Koog tool-calling nodes instead of direct Kotlin tool execution.
 * `T037` `done` - Preserve deterministic article selection and evidence policies while converting tool-call results back into workflow state.
 * `T038` `done` - Refactor the fetch stage so the LLM requests article fetches through Koog tool-calling nodes instead of direct Kotlin tool execution.
-* `T039` `planned` - Add graph and integration tests that prove tool routing, stage-limited tool access, and no retrieval-tool leakage into final payload generation.
+* `T039` `done` - Add graph and integration tests that prove tool routing, stage-limited tool access, and no retrieval-tool leakage into final payload generation.
 
 ## Phase 4: Direct OpenAI platform wiring
 

@@ -23,8 +23,19 @@ class StudyResearchWorkflowTest {
     @Test
     fun strategyGraphUsesTheExpectedResearchFirstNodeOrder() {
         val strategy = StudyResearchWorkflow.strategy(RecordingWikipediaClient())
+        val nodeNames = strategy.metadata.nodesMap.values.map { node -> node.name }
 
         assertEquals(listOf("validateInput"), strategy.nodeStart.edges.map { edge -> edge.toNode.name })
+        assertContains(nodeNames, "prepareSearchPrompt")
+        assertContains(nodeNames, "requestSearchTool")
+        assertContains(nodeNames, "executeSearchTool")
+        assertContains(nodeNames, "sendSearchToolResult")
+        assertContains(nodeNames, "finalizeSearchResults")
+        assertContains(nodeNames, "prepareFetchPrompt")
+        assertContains(nodeNames, "requestFetchTool")
+        assertContains(nodeNames, "executeFetchTool")
+        assertContains(nodeNames, "sendFetchToolResult")
+        assertContains(nodeNames, "finalizeFetchedMaterials")
 
         val validateInput = strategy.metadata.nodesMap.values.single { node -> node.name == "validateInput" }
         val prepareQueries = strategy.metadata.nodesMap.values.single { node -> node.name == "prepareQueries" }
@@ -32,6 +43,16 @@ class StudyResearchWorkflowTest {
         val selectArticles = strategy.metadata.nodesMap.values.single { node -> node.name == "selectArticles" }
         val fetchWithLlmTools = strategy.metadata.nodesMap.values.single { node -> node.name == "fetchWithLlmTools" }
         val checkEvidence = strategy.metadata.nodesMap.values.single { node -> node.name == "checkEvidence" }
+        val prepareSearchPrompt = strategy.metadata.nodesMap.values.single { node -> node.name == "prepareSearchPrompt" }
+        val requestSearchTool = strategy.metadata.nodesMap.values.single { node -> node.name == "requestSearchTool" }
+        val executeSearchTool = strategy.metadata.nodesMap.values.single { node -> node.name == "executeSearchTool" }
+        val sendSearchToolResult = strategy.metadata.nodesMap.values.single { node -> node.name == "sendSearchToolResult" }
+        val finalizeSearchResults = strategy.metadata.nodesMap.values.single { node -> node.name == "finalizeSearchResults" }
+        val prepareFetchPrompt = strategy.metadata.nodesMap.values.single { node -> node.name == "prepareFetchPrompt" }
+        val requestFetchTool = strategy.metadata.nodesMap.values.single { node -> node.name == "requestFetchTool" }
+        val executeFetchTool = strategy.metadata.nodesMap.values.single { node -> node.name == "executeFetchTool" }
+        val sendFetchToolResult = strategy.metadata.nodesMap.values.single { node -> node.name == "sendFetchToolResult" }
+        val finalizeFetchedMaterials = strategy.metadata.nodesMap.values.single { node -> node.name == "finalizeFetchedMaterials" }
 
         assertEquals(setOf("prepareQueries", "__finish__"), validateInput.edges.map { edge -> edge.toNode.name }.toSet())
         assertEquals(listOf("searchWithLlmTools"), prepareQueries.edges.map { edge -> edge.toNode.name })
@@ -39,6 +60,18 @@ class StudyResearchWorkflowTest {
         assertEquals(listOf("fetchWithLlmTools"), selectArticles.edges.map { edge -> edge.toNode.name })
         assertEquals(listOf("checkEvidence"), fetchWithLlmTools.edges.map { edge -> edge.toNode.name })
         assertEquals(listOf("__finish__"), checkEvidence.edges.map { edge -> edge.toNode.name })
+        assertEquals(listOf("requestSearchTool"), prepareSearchPrompt.edges.map { edge -> edge.toNode.name })
+        assertEquals(setOf("executeSearchTool", "finalizeSearchResults"), requestSearchTool.edges.map { edge -> edge.toNode.name }.toSet())
+        assertEquals(listOf("sendSearchToolResult"), executeSearchTool.edges.map { edge -> edge.toNode.name })
+        assertEquals(setOf("executeSearchTool", "finalizeSearchResults"), sendSearchToolResult.edges.map { edge -> edge.toNode.name }.toSet())
+        assertEquals(1, finalizeSearchResults.edges.size)
+        assertTrue(finalizeSearchResults.edges.single().toNode.name.startsWith("__finish__"))
+        assertEquals(listOf("requestFetchTool"), prepareFetchPrompt.edges.map { edge -> edge.toNode.name })
+        assertEquals(setOf("executeFetchTool", "finalizeFetchedMaterials"), requestFetchTool.edges.map { edge -> edge.toNode.name }.toSet())
+        assertEquals(listOf("sendFetchToolResult"), executeFetchTool.edges.map { edge -> edge.toNode.name })
+        assertEquals(setOf("executeFetchTool", "finalizeFetchedMaterials"), sendFetchToolResult.edges.map { edge -> edge.toNode.name }.toSet())
+        assertEquals(1, finalizeFetchedMaterials.edges.size)
+        assertTrue(finalizeFetchedMaterials.edges.single().toNode.name.startsWith("__finish__"))
     }
 
     @Test

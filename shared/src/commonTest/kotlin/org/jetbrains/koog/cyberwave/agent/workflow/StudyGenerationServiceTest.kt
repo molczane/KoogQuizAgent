@@ -8,6 +8,8 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import org.jetbrains.koog.cyberwave.agent.tool.FetchWikipediaArticleTool
+import org.jetbrains.koog.cyberwave.agent.tool.SearchWikipediaTool
 import org.jetbrains.koog.cyberwave.agent.support.ToolCallingSearchPromptExecutor
 import org.jetbrains.koog.cyberwave.agent.support.testLLModel
 import org.jetbrains.koog.cyberwave.data.wikipedia.WikipediaClient
@@ -105,8 +107,20 @@ class StudyGenerationServiceTest {
         assertEquals("Ready Kotlin quiz", result.screenTitle)
         assertEquals(PrimaryActionId.START_QUIZ, result.primaryAction?.id)
         assertEquals(2, promptExecutor.searchStageCalls)
+        assertEquals(2, promptExecutor.fetchStageCalls)
         assertEquals(1, promptExecutor.structuredPayloadCalls)
         assertEquals(listOf("Kotlin"), promptExecutor.emittedSearchToolTopics)
+        assertEquals(listOf("Kotlin"), promptExecutor.emittedFetchToolTitles)
+        assertEquals(
+            listOf(
+                listOf(SearchWikipediaTool.NAME),
+                listOf(SearchWikipediaTool.NAME),
+                listOf(FetchWikipediaArticleTool.NAME),
+                listOf(FetchWikipediaArticleTool.NAME),
+                emptyList(),
+            ),
+            promptExecutor.toolNamesByExecuteCall,
+        )
         assertContains(
             tracer.events.map { event -> "${event.spanName}:${event.status}" },
             "study_generation.payload.generate:${StudyWorkflowTraceStatus.SUCCEEDED}",
