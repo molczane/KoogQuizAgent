@@ -757,25 +757,26 @@ private fun ResultsScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             item {
-                ResultsHero(
-                    form = form,
-                    screenModel = screenModel,
-                    results = results,
-                )
-            }
-
-            item {
                 if (wideLayout) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(24.dp),
                         verticalAlignment = Alignment.Top,
                     ) {
-                        QuestionResultsSection(
-                            results = results,
-                            sourcesById = sourcesById,
+                        Column(
                             modifier = Modifier.weight(1.2f),
-                        )
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                        ) {
+                            ResultsHero(
+                                form = form,
+                                screenModel = screenModel,
+                                results = results,
+                            )
+                            QuestionResultsSection(
+                                results = results,
+                                sourcesById = sourcesById,
+                            )
+                        }
                         ResultsActionPanel(
                             results = results,
                             onRestartQuiz = onRestartQuiz,
@@ -785,6 +786,11 @@ private fun ResultsScreen(
                     }
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        ResultsHero(
+                            form = form,
+                            screenModel = screenModel,
+                            results = results,
+                        )
                         ResultsActionPanel(
                             results = results,
                             onRestartQuiz = onRestartQuiz,
