@@ -59,6 +59,34 @@ class WikipediaResearchPolicyTest {
     }
 
     @Test
+    fun `select articles deduplicates repeated page ids before ranking`() {
+        val selected =
+            WikipediaResearchPolicy.selectArticles(
+                topic = "Kotlin",
+                searchResults =
+                    listOf(
+                        searchResult(
+                            pageId = 1L,
+                            title = "Kotlin",
+                            snippet = "Strong exact match for Kotlin.",
+                        ),
+                        searchResult(
+                            pageId = 1L,
+                            title = "Kotlin language",
+                            snippet = "Duplicate page id should be ignored.",
+                        ),
+                        searchResult(
+                            pageId = 2L,
+                            title = "Kotlin coroutine",
+                            snippet = "Distinct article that should remain after deduplication.",
+                        ),
+                    ),
+            )
+
+        assertEquals(listOf("Kotlin", "Kotlin coroutine"), selected.map(SelectedWikipediaArticle::title))
+    }
+
+    @Test
     fun `evidence assessment is sufficient when all topics have enough usable content`() {
         val assessment =
             WikipediaResearchPolicy.assessEvidence(
@@ -182,11 +210,13 @@ class WikipediaResearchPolicyTest {
     }
 
     private fun searchResult(
+        pageId: Long? = null,
         title: String,
         snippet: String,
         isDisambiguationHint: Boolean = false,
     ): WikipediaSearchResult =
         WikipediaSearchResult(
+            pageId = pageId,
             title = title,
             snippet = snippet,
             canonicalUrl = "https://en.wikipedia.org/wiki/${title.replace(' ', '_')}",

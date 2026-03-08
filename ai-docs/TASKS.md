@@ -65,7 +65,7 @@ T
 
 ## Phase 6: Quality and observability
 
-* `T060` `planned` - Add unit tests for validation, topic parsing, selection rules, and scoring logic.
+* `T060` `done` - Add unit tests for validation, topic parsing, selection rules, and scoring logic.
 * `T061` `planned` - Add Koog graph tests using mock LLM/tool facilities.
 * `T062` `planned` - Add contract tests for the structured output schema.
 * `T063` `planned` - Add OpenTelemetry or equivalent tracing hooks suitable for Koog workflows.
