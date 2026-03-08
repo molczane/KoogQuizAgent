@@ -30,6 +30,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -93,14 +94,14 @@ fun StudyAppScreen(
             )
 
         is StudyUiState.QuizInProgress ->
-            StagePlaceholderScreen(
+            QuizScreen(
                 modifier = modifier,
-                eyebrow = "QUIZ",
-                title = "Quiz screen is next",
-                message = "The reducer already tracks answers and progression. This placeholder keeps the app navigable until that screen is built.",
-                supportingNote = "Current action: ${uiState.screenModel.primaryAction?.label ?: "Quiz in progress"}",
-                actionLabel = "Back to request",
-                onAction = { onEvent(StudyUiEvent.ReturnToInput) },
+                form = uiState.form,
+                screenModel = uiState.screenModel,
+                session = uiState.session,
+                onAnswerSelected = { onEvent(StudyUiEvent.AnswerSelected(it)) },
+                onAdvanceQuiz = { onEvent(StudyUiEvent.AdvanceQuiz) },
+                onReturnToInput = { onEvent(StudyUiEvent.ReturnToInput) },
             )
 
         is StudyUiState.QuizResults ->
@@ -349,6 +350,384 @@ private fun SummaryScreen(
                             onOpenSource = uriHandler::openUri,
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuizScreen(
+    form: StudyFormState,
+    screenModel: StudyScreenModel,
+    session: org.jetbrains.koog.cyberwave.presentation.state.QuizSessionState,
+    onAnswerSelected: (Int) -> Unit,
+    onAdvanceQuiz: () -> Unit,
+    onReturnToInput: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val question = session.currentQuestion
+    val selectedOptionIndex = session.selectedOptionByQuestionId[question.id]
+    val questionSources =
+        remember(question.sourceRefs, screenModel.sources) {
+            screenModel.sources.filter { source -> source.id in question.sourceRefs }
+        }
+    val uriHandler = LocalUriHandler.current
+
+    BoxWithConstraints(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .safeContentPadding(),
+    ) {
+        val wideLayout = maxWidth >= 1040.dp
+        val containerPadding = if (wideLayout) PaddingValues(36.dp) else PaddingValues(horizontal = 18.dp, vertical = 24.dp)
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = containerPadding,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            item {
+                QuizHero(
+                    form = form,
+                    screenModel = screenModel,
+                    session = session,
+                )
+            }
+
+            item {
+                if (wideLayout) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        QuestionPanel(
+                            question = question,
+                            selectedOptionIndex = selectedOptionIndex,
+                            onAnswerSelected = onAnswerSelected,
+                            modifier = Modifier.weight(1.2f),
+                        )
+                        Column(
+                            modifier = Modifier.weight(0.8f),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                        ) {
+                            QuizActionPanel(
+                                session = session,
+                                selectedOptionIndex = selectedOptionIndex,
+                                onAdvanceQuiz = onAdvanceQuiz,
+                                onReturnToInput = onReturnToInput,
+                            )
+                            QuizSourcesPanel(
+                                questionSources = questionSources,
+                                onOpenSource = uriHandler::openUri,
+                            )
+                        }
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        QuestionPanel(
+                            question = question,
+                            selectedOptionIndex = selectedOptionIndex,
+                            onAnswerSelected = onAnswerSelected,
+                        )
+                        QuizActionPanel(
+                            session = session,
+                            selectedOptionIndex = selectedOptionIndex,
+                            onAdvanceQuiz = onAdvanceQuiz,
+                            onReturnToInput = onReturnToInput,
+                        )
+                        QuizSourcesPanel(
+                            questionSources = questionSources,
+                            onOpenSource = uriHandler::openUri,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuizHero(
+    form: StudyFormState,
+    screenModel: StudyScreenModel,
+    session: org.jetbrains.koog.cyberwave.presentation.state.QuizSessionState,
+    modifier: Modifier = Modifier,
+) {
+    val currentNumber = session.currentQuestionIndex + 1
+    val totalQuestions = session.quiz.questions.size
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = Color.Transparent,
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .background(
+                        Brush.linearGradient(
+                            colors =
+                                listOf(
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.18f),
+                                ),
+                        ),
+                    )
+                    .padding(28.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            Text(
+                text = "QUIZ IN PROGRESS",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+            Text(
+                text = screenModel.screenTitle,
+                style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Question $currentNumber of $totalQuestions. Choose one answer and continue when you are ready.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LinearProgressIndicator(
+                progress = { currentNumber / totalQuestions.toFloat() },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                screenModel.topics.forEach { topic ->
+                    InsightBadge(text = topic)
+                }
+                InsightBadge(text = form.difficulty.label)
+                InsightBadge(text = "${(totalQuestions - currentNumber).coerceAtLeast(0)} remaining")
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuestionPanel(
+    question: QuizQuestion,
+    selectedOptionIndex: Int?,
+    onAnswerSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            Text(
+                text = "Question",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+            Text(
+                text = question.prompt,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                question.options.forEachIndexed { index, option ->
+                    QuizOptionRow(
+                        optionIndex = index,
+                        optionText = option,
+                        selected = selectedOptionIndex == index,
+                        onSelect = { onAnswerSelected(index) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuizOptionRow(
+    optionIndex: Int,
+    optionText: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    val containerColor =
+        if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        }
+    val borderColor =
+        if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.outlineVariant
+        }
+
+    Surface(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.medium)
+                .clickable(onClick = onSelect),
+        shape = MaterialTheme.shapes.medium,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = CircleShape,
+                color =
+                    if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
+                border = BorderStroke(1.dp, borderColor),
+            ) {
+                Text(
+                    text = optionLetter(optionIndex),
+                    style = MaterialTheme.typography.labelMedium,
+                    color =
+                        if (selected) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                )
+            }
+            RadioButton(
+                selected = selected,
+                onClick = onSelect,
+            )
+            Text(
+                text = optionText,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuizActionPanel(
+    session: org.jetbrains.koog.cyberwave.presentation.state.QuizSessionState,
+    selectedOptionIndex: Int?,
+    onAdvanceQuiz: () -> Unit,
+    onReturnToInput: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val advanceLabel = if (session.isLastQuestion) "See results" else "Next question"
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                text = "Move through the quiz",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                text =
+                    if (selectedOptionIndex == null) {
+                        "Pick one answer to continue."
+                    } else {
+                        "Selection recorded. You can still change it before continuing."
+                    },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Button(
+                onClick = onAdvanceQuiz,
+                enabled = selectedOptionIndex != null,
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 22.dp, vertical = 16.dp),
+            ) {
+                Text(advanceLabel)
+            }
+            OutlinedButton(
+                onClick = onReturnToInput,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Back to request")
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuizSourcesPanel(
+    questionSources: List<ResearchSource>,
+    onOpenSource: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = "Current question sources",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "The quiz stays grounded in the same Wikipedia material used for generation.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (questionSources.isEmpty()) {
+                Text(
+                    text = "No source details are attached to this question.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                questionSources.forEach { source ->
+                    SourceRow(
+                        source = source,
+                        onOpenSource = onOpenSource,
+                    )
                 }
             }
         }
@@ -631,6 +1010,8 @@ private fun SourceRow(
         }
     }
 }
+
+private fun optionLetter(index: Int): String = ('A' + index).toString()
 
 @Composable
 private fun ResearchingScreen(
@@ -1215,6 +1596,33 @@ private fun SummaryScreenPreview() {
                             difficulty = Difficulty.MEDIUM,
                         ),
                     screenModel = previewSummaryScreenModel(),
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun QuizScreenPreview() {
+    val screenModel = previewSummaryScreenModel()
+
+    CyberWaveTheme {
+        StudyAppScreen(
+            uiState =
+                StudyUiState.QuizInProgress(
+                    form =
+                        StudyFormState(
+                            topicsText = "Kotlin Coroutines",
+                            maxQuestions = 4,
+                            difficulty = Difficulty.MEDIUM,
+                        ),
+                    screenModel = screenModel,
+                    session =
+                        org.jetbrains.koog.cyberwave.presentation.state.QuizSessionState(
+                            quiz = requireNotNull(screenModel.quiz),
+                            selectedOptionByQuestionId = mapOf("q1" to 0),
+                        ),
                 ),
             onEvent = {},
         )

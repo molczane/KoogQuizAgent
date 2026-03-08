@@ -60,7 +60,7 @@ T
 * `T050` `done` - Build the input screen with topics, question count, difficulty, and specific instructions.
 * `T051` `done` - Build the researching/loading experience.
 * `T052` `done` - Build the summary screen with source list and `Start the quiz` action.
-* `T053` `planned` - Build the single-choice quiz screen.
+* `T053` `done` - Build the single-choice quiz screen.
 * `T054` `planned` - Build the quiz results screen and failure states.
 
 ## Phase 6: Quality and observability
