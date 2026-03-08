@@ -286,14 +286,6 @@ private fun SummaryScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             item {
-                SummaryHero(
-                    form = form,
-                    screenModel = screenModel,
-                    quiz = quiz,
-                )
-            }
-
-            item {
                 if (wideLayout) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -304,6 +296,11 @@ private fun SummaryScreen(
                             modifier = Modifier.weight(1.25f),
                             verticalArrangement = Arrangement.spacedBy(20.dp),
                         ) {
+                            SummaryHero(
+                                form = form,
+                                screenModel = screenModel,
+                                quiz = quiz,
+                            )
                             SummaryCardsSection(
                                 summaryCards = screenModel.summaryCards,
                                 sourcesById = sourcesById,
@@ -327,6 +324,11 @@ private fun SummaryScreen(
                     }
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        SummaryHero(
+                            form = form,
+                            screenModel = screenModel,
+                            quiz = quiz,
+                        )
                         QuizReadyPanel(
                             quiz = quiz,
                             primaryActionLabel = screenModel.primaryAction?.label ?: "Start the quiz",
