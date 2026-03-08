@@ -2,6 +2,7 @@ package org.jetbrains.koog.cyberwave.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -33,21 +34,30 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import org.jetbrains.koog.cyberwave.application.StudyRequestConstraints
 import org.jetbrains.koog.cyberwave.domain.model.Difficulty
+import org.jetbrains.koog.cyberwave.domain.model.QuestionType
+import org.jetbrains.koog.cyberwave.domain.model.QuizPayload
+import org.jetbrains.koog.cyberwave.domain.model.QuizQuestion
+import org.jetbrains.koog.cyberwave.domain.model.ResearchSource
+import org.jetbrains.koog.cyberwave.domain.model.SummaryCard
 import org.jetbrains.koog.cyberwave.presentation.model.PrimaryActionId
+import org.jetbrains.koog.cyberwave.presentation.model.PrimaryAction
+import org.jetbrains.koog.cyberwave.presentation.model.StudyScreenModel
 import org.jetbrains.koog.cyberwave.presentation.state.StudyFormState
 import org.jetbrains.koog.cyberwave.presentation.state.StudyUiEvent
 import org.jetbrains.koog.cyberwave.presentation.state.StudyUiState
@@ -74,14 +84,12 @@ fun StudyAppScreen(
             )
 
         is StudyUiState.Summary ->
-            StagePlaceholderScreen(
+            SummaryScreen(
                 modifier = modifier,
-                eyebrow = "SUMMARY",
-                title = uiState.screenModel.screenTitle,
-                message = "The summary view is the next step. The state routing is already in place.",
-                supportingNote = "Primary action: ${uiState.screenModel.primaryAction?.label ?: "Continue"}",
-                actionLabel = "Back to request",
-                onAction = { onEvent(StudyUiEvent.ReturnToInput) },
+                form = uiState.form,
+                screenModel = uiState.screenModel,
+                onStartQuiz = { onEvent(StudyUiEvent.StartQuiz) },
+                onReturnToInput = { onEvent(StudyUiEvent.ReturnToInput) },
             )
 
         is StudyUiState.QuizInProgress ->
@@ -251,6 +259,375 @@ private fun HeroPanel(modifier: Modifier = Modifier) {
                 InsightBadge(text = "Local direct OpenAI")
                 InsightBadge(text = "Source-backed summaries")
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SummaryScreen(
+    form: StudyFormState,
+    screenModel: StudyScreenModel,
+    onStartQuiz: () -> Unit,
+    onReturnToInput: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val quiz = screenModel.quiz ?: return
+    val sourcesById = remember(screenModel.sources) { screenModel.sources.associateBy(ResearchSource::id) }
+    val uriHandler = LocalUriHandler.current
+
+    BoxWithConstraints(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .safeContentPadding(),
+    ) {
+        val wideLayout = maxWidth >= 1040.dp
+        val containerPadding = if (wideLayout) PaddingValues(36.dp) else PaddingValues(horizontal = 18.dp, vertical = 24.dp)
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = containerPadding,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            item {
+                SummaryHero(
+                    form = form,
+                    screenModel = screenModel,
+                    quiz = quiz,
+                )
+            }
+
+            item {
+                if (wideLayout) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1.25f),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                        ) {
+                            SummaryCardsSection(
+                                summaryCards = screenModel.summaryCards,
+                                sourcesById = sourcesById,
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(0.85f),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                        ) {
+                            QuizReadyPanel(
+                                quiz = quiz,
+                                primaryActionLabel = screenModel.primaryAction?.label ?: "Start the quiz",
+                                onStartQuiz = onStartQuiz,
+                                onReturnToInput = onReturnToInput,
+                            )
+                            SourcesSection(
+                                sources = screenModel.sources,
+                                onOpenSource = uriHandler::openUri,
+                            )
+                        }
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        QuizReadyPanel(
+                            quiz = quiz,
+                            primaryActionLabel = screenModel.primaryAction?.label ?: "Start the quiz",
+                            onStartQuiz = onStartQuiz,
+                            onReturnToInput = onReturnToInput,
+                        )
+                        SummaryCardsSection(
+                            summaryCards = screenModel.summaryCards,
+                            sourcesById = sourcesById,
+                        )
+                        SourcesSection(
+                            sources = screenModel.sources,
+                            onOpenSource = uriHandler::openUri,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SummaryHero(
+    form: StudyFormState,
+    screenModel: StudyScreenModel,
+    quiz: QuizPayload,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = Color.Transparent,
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .background(
+                        Brush.linearGradient(
+                            colors =
+                                listOf(
+                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.88f),
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.88f),
+                                ),
+                        ),
+                    )
+                    .padding(28.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Text(
+                text = "READY TO REVIEW",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+            Text(
+                text = screenModel.screenTitle,
+                style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Wikipedia research is complete. Review the summary cards, scan the sources, and start the quiz when the lesson looks right.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                screenModel.topics.forEach { topic ->
+                    InsightBadge(text = topic)
+                }
+                InsightBadge(text = "${quiz.questions.size} questions")
+                InsightBadge(text = "${screenModel.sources.size} sources")
+                InsightBadge(text = form.difficulty.label)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryCardsSection(
+    summaryCards: List<SummaryCard>,
+    sourcesById: Map<String, ResearchSource>,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            Text(
+                text = "Study summary",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Each card comes from the researched Wikipedia evidence that will also back the quiz questions.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            summaryCards.forEach { summaryCard ->
+                SummaryCardView(
+                    summaryCard = summaryCard,
+                    sourcesById = sourcesById,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SummaryCardView(
+    summaryCard: SummaryCard,
+    sourcesById: Map<String, ResearchSource>,
+) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = summaryCard.title,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                summaryCard.bullets.forEach { bullet ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .padding(top = 8.dp)
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary),
+                        )
+                        Text(
+                            text = bullet,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+            if (summaryCard.sourceRefs.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    summaryCard.sourceRefs.forEach { sourceRef ->
+                        val sourceTitle = sourcesById[sourceRef]?.title ?: sourceRef
+                        InsightBadge(text = sourceTitle)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuizReadyPanel(
+    quiz: QuizPayload,
+    primaryActionLabel: String,
+    onStartQuiz: () -> Unit,
+    onReturnToInput: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f),
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = "Quiz is ready",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            Text(
+                text = "The generated quiz contains ${quiz.questions.size} single-choice question(s). Start when you are ready or go back and refine the request.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            Button(
+                onClick = onStartQuiz,
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 22.dp, vertical = 16.dp),
+            ) {
+                Text(primaryActionLabel)
+            }
+            OutlinedButton(
+                onClick = onReturnToInput,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Back to request")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SourcesSection(
+    sources: List<ResearchSource>,
+    onOpenSource: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+            ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            Text(
+                text = "Sources",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "These Wikipedia articles support both the summary cards and the quiz content.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            sources.forEach { source ->
+                SourceRow(
+                    source = source,
+                    onOpenSource = onOpenSource,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SourceRow(
+    source: ResearchSource,
+    onOpenSource: (String) -> Unit,
+) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = source.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = source.snippet,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = source.url,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier.clickable { onOpenSource(source.url) },
+            )
         }
     }
 }
@@ -823,3 +1200,83 @@ private fun StudyInputScreenPreview() {
         )
     }
 }
+
+@Preview
+@Composable
+private fun SummaryScreenPreview() {
+    CyberWaveTheme {
+        StudyAppScreen(
+            uiState =
+                StudyUiState.Summary(
+                    form =
+                        StudyFormState(
+                            topicsText = "Kotlin Coroutines",
+                            maxQuestions = 4,
+                            difficulty = Difficulty.MEDIUM,
+                        ),
+                    screenModel = previewSummaryScreenModel(),
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+private fun previewSummaryScreenModel(): StudyScreenModel =
+    StudyScreenModel(
+        screenTitle = "Learn: Kotlin Coroutines",
+        topics = listOf("Kotlin Coroutines"),
+        summaryCards =
+            listOf(
+                SummaryCard(
+                    title = "What coroutines are",
+                    bullets =
+                        listOf(
+                            "Coroutines let asynchronous code suspend without blocking the underlying thread.",
+                            "They are lighter to create and manage than OS threads in many workloads.",
+                        ),
+                    sourceRefs = listOf("src1"),
+                ),
+                SummaryCard(
+                    title = "Why structured concurrency matters",
+                    bullets =
+                        listOf(
+                            "Scopes define ownership for child coroutines.",
+                            "Cancellation and failure propagate more predictably across related work.",
+                        ),
+                    sourceRefs = listOf("src1", "src2"),
+                ),
+            ),
+        quiz =
+            QuizPayload(
+                maxQuestions = 4,
+                questions =
+                    listOf(
+                        QuizQuestion(
+                            id = "q1",
+                            type = QuestionType.SINGLE_CHOICE,
+                            prompt = "What does a suspending function avoid doing while it waits?",
+                            options = listOf("Blocking the thread", "Returning values", "Using dispatchers", "Creating scopes"),
+                            correctOptionIndex = 0,
+                            explanation = "Suspending functions can pause without blocking the thread.",
+                            sourceRefs = listOf("src1"),
+                        ),
+                    ),
+            ),
+        sources =
+            listOf(
+                ResearchSource(
+                    id = "src1",
+                    title = "Coroutine",
+                    url = "https://en.wikipedia.org/wiki/Coroutine",
+                    snippet = "General coroutine concepts and suspension behavior.",
+                ),
+                ResearchSource(
+                    id = "src2",
+                    title = "Kotlin coroutines",
+                    url = "https://en.wikipedia.org/wiki/Kotlin_(programming_language)",
+                    snippet = "Kotlin background and coroutine support context.",
+                ),
+            ),
+        state = org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.READY,
+        primaryAction = PrimaryAction(id = PrimaryActionId.START_QUIZ, label = "Start the quiz"),
+    )

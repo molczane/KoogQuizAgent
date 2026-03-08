@@ -56,10 +56,10 @@ Status legend:
 * `T044` `done` - Add clear missing-key and invalid-mode error states in the UI/application layer.
 
 ## Phase 5: Compose UI
-
+T
 * `T050` `done` - Build the input screen with topics, question count, difficulty, and specific instructions.
 * `T051` `done` - Build the researching/loading experience.
-* `T052` `planned` - Build the summary screen with source list and `Start the quiz` action.
+* `T052` `done` - Build the summary screen with source list and `Start the quiz` action.
 * `T053` `planned` - Build the single-choice quiz screen.
 * `T054` `planned` - Build the quiz results screen and failure states.
 
