@@ -19,30 +19,32 @@ class StudySessionUseCase(
     private val openAiGateway: PlatformOpenAiGateway,
 ) {
     suspend fun generate(input: StudyRequestInput): StudyScreenModel =
-        when (val gatewayResult = openAiGateway.open()) {
-            is PlatformOpenAiGatewayResult.Ready ->
-                try {
-                    StudyGenerationService(
-                        promptExecutor = gatewayResult.promptExecutor,
-                        llmModel = gatewayResult.llmModel,
-                        wikipediaClient = wikipediaClient,
-                    ).generate(input)
-                } catch (exception: CancellationException) {
-                    throw exception
-                } catch (exception: Throwable) {
-                    generationErrorModel(
-                        input = input,
-                        cause = exception,
-                    )
-                } finally {
-                    gatewayResult.promptExecutor.close()
-                }
+        try {
+            when (val gatewayResult = openAiGateway.open()) {
+                is PlatformOpenAiGatewayResult.Ready ->
+                    try {
+                        StudyGenerationService(
+                            promptExecutor = gatewayResult.promptExecutor,
+                            llmModel = gatewayResult.llmModel,
+                            wikipediaClient = wikipediaClient,
+                        ).generate(input)
+                    } finally {
+                        gatewayResult.promptExecutor.close()
+                    }
 
-            is PlatformOpenAiGatewayResult.ConfigurationError ->
-                configurationErrorModel(
-                    input = input,
-                    error = gatewayResult.error,
-                )
+                is PlatformOpenAiGatewayResult.ConfigurationError ->
+                    configurationErrorModel(
+                        input = input,
+                        error = gatewayResult.error,
+                    )
+            }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Throwable) {
+            generationErrorModel(
+                input = input,
+                cause = exception,
+            )
         }
 
     private fun generationErrorModel(

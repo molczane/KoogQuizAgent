@@ -7,6 +7,11 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+// Koog 0.6.0 expects kotlinx-datetime 0.6.x runtime symbols such as Clock.System.
+configurations.configureEach {
+    resolutionStrategy.force("org.jetbrains.kotlinx:kotlinx-datetime:${libs.versions.kotlinx.datetime.get()}")
+}
+
 kotlin {
     jvm()
 

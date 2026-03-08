@@ -103,6 +103,33 @@ class StudySessionUseCaseTest {
     }
 
     @Test
+    fun `generate returns generation error when gateway opening fails unexpectedly`() = runTest {
+        val useCase =
+            StudySessionUseCase(
+                wikipediaClient = ReadyWikipediaClient(),
+                openAiGateway =
+                    PlatformOpenAiGateway(
+                        apiKeyProvider = StaticApiKeyProvider(ApiKeyProviderResult.Available("sk-live")),
+                        llmModel = testLLModel,
+                        promptExecutorFactory = { error("Missing runtime symbol: Clock.System") },
+                    ),
+            )
+
+        val result =
+            useCase.generate(
+                StudyRequestInput(
+                    topicsText = "Kotlin",
+                    maxQuestions = 2,
+                    difficulty = Difficulty.MEDIUM,
+                ),
+            )
+
+        assertEquals(StudyGenerationState.GENERATION_ERROR, result.state)
+        assertEquals("Generation interrupted", result.screenTitle)
+        assertTrue(result.error?.message?.contains("Clock.System") == true)
+    }
+
+    @Test
     fun `generate returns generation error when research fails unexpectedly`() = runTest {
         val useCase =
             StudySessionUseCase(
