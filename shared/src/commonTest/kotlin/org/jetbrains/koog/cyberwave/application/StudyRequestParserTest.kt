@@ -6,6 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import org.jetbrains.koog.cyberwave.domain.model.Difficulty
+import org.jetbrains.koog.cyberwave.domain.model.LocalLlmProvider
 import org.jetbrains.koog.cyberwave.domain.model.StudyRequestInput
 import org.jetbrains.koog.cyberwave.domain.model.StudyRequestValidationResult
 
@@ -97,6 +98,22 @@ class StudyRequestParserTest {
 
         val success = assertIs<StudyRequestValidationResult.Success>(result)
         assertNull(success.request.specificInstructions)
+    }
+
+    @Test
+    fun validatePreservesSelectedProvider() {
+        val result =
+            StudyRequestParser.validate(
+                StudyRequestInput(
+                    topicsText = "Kotlin",
+                    maxQuestions = 4,
+                    difficulty = Difficulty.HARD,
+                    provider = LocalLlmProvider.OLLAMA,
+                ),
+            )
+
+        val success = assertIs<StudyRequestValidationResult.Success>(result)
+        assertEquals(LocalLlmProvider.OLLAMA, success.request.provider)
     }
 
     @Test

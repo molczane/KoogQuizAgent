@@ -27,6 +27,10 @@ object StudyUiStateReducer {
                 form.copy(difficulty = event.difficulty)
             }
 
+            is StudyUiEvent.ProviderChanged -> reduceFormChange(currentState) { form ->
+                form.copy(provider = event.provider)
+            }
+
             is StudyUiEvent.SpecificInstructionsChanged -> reduceFormChange(currentState) { form ->
                 form.copy(specificInstructions = event.specificInstructions).clearIssuesFor(field = "specificInstructions")
             }
@@ -212,6 +216,7 @@ object StudyUiStateReducer {
             topicsText = topicsText,
             maxQuestions = maxQuestions,
             difficulty = difficulty,
+            provider = provider,
             specificInstructions = specificInstructions,
         )
 

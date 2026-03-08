@@ -20,16 +20,18 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import org.jetbrains.koog.cyberwave.agent.support.ToolCallingSearchPromptExecutor
 import org.jetbrains.koog.cyberwave.agent.support.testLLModel
+import org.jetbrains.koog.cyberwave.data.llm.PlatformLocalLlmGateway
 import org.jetbrains.koog.cyberwave.data.openai.ApiKeyProvider
 import org.jetbrains.koog.cyberwave.data.openai.ApiKeyProviderResult
 import org.jetbrains.koog.cyberwave.data.openai.OpenAiConfigurationError
 import org.jetbrains.koog.cyberwave.data.openai.OpenAiConfigurationErrorKind
-import org.jetbrains.koog.cyberwave.data.openai.PlatformOpenAiGateway
 import org.jetbrains.koog.cyberwave.data.wikipedia.WikipediaClient
 import org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticle
 import org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticleSummary
 import org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaSearchResult
 import org.jetbrains.koog.cyberwave.domain.model.Difficulty
+import org.jetbrains.koog.cyberwave.domain.model.LocalLlmDefaults
+import org.jetbrains.koog.cyberwave.domain.model.LocalLlmProvider
 import org.jetbrains.koog.cyberwave.domain.model.QuestionType
 import org.jetbrains.koog.cyberwave.domain.model.QuizPayload
 import org.jetbrains.koog.cyberwave.domain.model.QuizQuestion
@@ -48,7 +50,7 @@ class StudySessionUseCaseTest {
         val useCase =
             StudySessionUseCase(
                 wikipediaClient = ReadyWikipediaClient(),
-                openAiGateway =
+                localLlmGateway =
                     gatewayFor(
                         ApiKeyProviderResult.Unavailable(
                             OpenAiConfigurationError(
@@ -78,8 +80,8 @@ class StudySessionUseCaseTest {
         assertEquals(
             listOf(
                 "study_session.generate:${StudyWorkflowTraceStatus.STARTED}",
-                "study_session.openai_gateway.open:${StudyWorkflowTraceStatus.STARTED}",
-                "study_session.openai_gateway.open:${StudyWorkflowTraceStatus.SUCCEEDED}",
+                "study_session.local_llm_gateway.open:${StudyWorkflowTraceStatus.STARTED}",
+                "study_session.local_llm_gateway.open:${StudyWorkflowTraceStatus.SUCCEEDED}",
                 "study_session.generate:${StudyWorkflowTraceStatus.SUCCEEDED}",
             ),
             tracer.events.map { event -> "${event.spanName}:${event.status}" },
@@ -94,7 +96,7 @@ class StudySessionUseCaseTest {
         val useCase =
             StudySessionUseCase(
                 wikipediaClient = ReadyWikipediaClient(),
-                openAiGateway =
+                localLlmGateway =
                     gatewayFor(
                         ApiKeyProviderResult.Unavailable(
                             OpenAiConfigurationError(
@@ -125,11 +127,12 @@ class StudySessionUseCaseTest {
         val useCase =
             StudySessionUseCase(
                 wikipediaClient = ReadyWikipediaClient(),
-                openAiGateway =
-                    PlatformOpenAiGateway(
-                        apiKeyProvider = StaticApiKeyProvider(ApiKeyProviderResult.Available("sk-live")),
-                        llmModel = testLLModel,
-                        promptExecutorFactory = { error("Missing runtime symbol: Clock.System") },
+                localLlmGateway =
+                    PlatformLocalLlmGateway(
+                        openAiApiKeyProvider = StaticApiKeyProvider(ApiKeyProviderResult.Available("sk-live")),
+                        openAiLlmModel = testLLModel,
+                        ollamaLlmModel = testLLModel,
+                        openAiPromptExecutorFactory = { error("Missing runtime symbol: Clock.System") },
                     ),
             )
 
@@ -148,16 +151,50 @@ class StudySessionUseCaseTest {
     }
 
     @Test
+    fun `generate returns Ollama guidance when the local Ollama runtime cannot be opened`() = runTest {
+        val useCase =
+            StudySessionUseCase(
+                wikipediaClient = ReadyWikipediaClient(),
+                localLlmGateway =
+                    PlatformLocalLlmGateway(
+                        openAiApiKeyProvider = StaticApiKeyProvider(ApiKeyProviderResult.Available("sk-live")),
+                        openAiLlmModel = testLLModel,
+                        ollamaLlmModel = testLLModel,
+                        openAiPromptExecutorFactory = { error("OpenAI should not be used in the Ollama branch.") },
+                        ollamaPromptExecutorFactory = {
+                            error("Unable to reach Ollama host ${LocalLlmDefaults.OLLAMA_BASE_URL}")
+                        },
+                    ),
+            )
+
+        val result =
+            useCase.generate(
+                StudyRequestInput(
+                    topicsText = "Kotlin",
+                    maxQuestions = 2,
+                    difficulty = Difficulty.MEDIUM,
+                    provider = LocalLlmProvider.OLLAMA,
+                ),
+            )
+
+        assertEquals(StudyGenerationState.GENERATION_ERROR, result.state)
+        assertEquals("Generation interrupted", result.screenTitle)
+        assertTrue(result.error?.message?.contains(LocalLlmDefaults.OLLAMA_BASE_URL) == true)
+        assertTrue(result.error?.message?.contains(LocalLlmDefaults.OLLAMA_MODEL_NAME) == true)
+    }
+
+    @Test
     fun `generate returns generation error when research fails unexpectedly`() = runTest {
         val tracer = RecordingStudyWorkflowTracer()
         val useCase =
             StudySessionUseCase(
                 wikipediaClient = FailingWikipediaClient(),
-                openAiGateway =
-                    PlatformOpenAiGateway(
-                        apiKeyProvider = StaticApiKeyProvider(ApiKeyProviderResult.Available("sk-live")),
-                        llmModel = testLLModel,
-                        promptExecutorFactory = { ClosablePromptExecutor(responseJson = readyPayloadJson()) },
+                localLlmGateway =
+                    PlatformLocalLlmGateway(
+                        openAiApiKeyProvider = StaticApiKeyProvider(ApiKeyProviderResult.Available("sk-live")),
+                        openAiLlmModel = testLLModel,
+                        ollamaLlmModel = testLLModel,
+                        openAiPromptExecutorFactory = { ClosablePromptExecutor(responseJson = readyPayloadJson()) },
                     ),
                 tracer = tracer,
             )
@@ -188,11 +225,12 @@ class StudySessionUseCaseTest {
         val useCase =
             StudySessionUseCase(
                 wikipediaClient = ReadyWikipediaClient(),
-                openAiGateway =
-                    PlatformOpenAiGateway(
-                        apiKeyProvider = StaticApiKeyProvider(ApiKeyProviderResult.Available("sk-live")),
-                        llmModel = testLLModel,
-                        promptExecutorFactory = { promptExecutor },
+                localLlmGateway =
+                    PlatformLocalLlmGateway(
+                        openAiApiKeyProvider = StaticApiKeyProvider(ApiKeyProviderResult.Available("sk-live")),
+                        openAiLlmModel = testLLModel,
+                        ollamaLlmModel = testLLModel,
+                        openAiPromptExecutorFactory = { promptExecutor },
                     ),
             )
 
@@ -209,11 +247,12 @@ class StudySessionUseCaseTest {
         assertTrue(promptExecutor.closed)
     }
 
-    private fun gatewayFor(result: ApiKeyProviderResult): PlatformOpenAiGateway =
-        PlatformOpenAiGateway(
-            apiKeyProvider = StaticApiKeyProvider(result),
-            llmModel = testLLModel,
-            promptExecutorFactory = { ClosablePromptExecutor(responseJson = readyPayloadJson()) },
+    private fun gatewayFor(result: ApiKeyProviderResult): PlatformLocalLlmGateway =
+        PlatformLocalLlmGateway(
+            openAiApiKeyProvider = StaticApiKeyProvider(result),
+            openAiLlmModel = testLLModel,
+            ollamaLlmModel = testLLModel,
+            openAiPromptExecutorFactory = { ClosablePromptExecutor(responseJson = readyPayloadJson()) },
         )
 
     private class StaticApiKeyProvider(

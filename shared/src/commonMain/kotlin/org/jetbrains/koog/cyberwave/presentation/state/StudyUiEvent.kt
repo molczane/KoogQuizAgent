@@ -1,6 +1,7 @@
 package org.jetbrains.koog.cyberwave.presentation.state
 
 import org.jetbrains.koog.cyberwave.domain.model.Difficulty
+import org.jetbrains.koog.cyberwave.domain.model.LocalLlmProvider
 import org.jetbrains.koog.cyberwave.presentation.model.StudyScreenModel
 
 sealed interface StudyUiEvent {
@@ -9,6 +10,8 @@ sealed interface StudyUiEvent {
     data class MaxQuestionsChanged(val maxQuestions: Int) : StudyUiEvent
 
     data class DifficultyChanged(val difficulty: Difficulty) : StudyUiEvent
+
+    data class ProviderChanged(val provider: LocalLlmProvider) : StudyUiEvent
 
     data class SpecificInstructionsChanged(val specificInstructions: String) : StudyUiEvent
 

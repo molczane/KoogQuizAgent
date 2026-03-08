@@ -7,5 +7,6 @@ data class ValidatedStudyRequest(
     val topics: List<String>,
     val maxQuestions: Int,
     val difficulty: Difficulty,
+    val provider: LocalLlmProvider = LocalLlmProvider.OPENAI,
     val specificInstructions: String? = null,
 )

@@ -6,6 +6,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import org.jetbrains.koog.cyberwave.domain.model.Difficulty
+import org.jetbrains.koog.cyberwave.domain.model.LocalLlmProvider
 import org.jetbrains.koog.cyberwave.domain.model.QuestionType
 import org.jetbrains.koog.cyberwave.domain.model.QuizPayload
 import org.jetbrains.koog.cyberwave.domain.model.QuizQuestion
@@ -37,6 +38,7 @@ class StudyUiStateReducerTest {
                         topicsText = "Kotlin ; Coroutines\nkotlin",
                         maxQuestions = 3,
                         difficulty = Difficulty.HARD,
+                        provider = LocalLlmProvider.OLLAMA,
                         specificInstructions = "  focus on structured concurrency  ",
                     ),
             )
@@ -46,8 +48,22 @@ class StudyUiStateReducerTest {
         val loadingState = assertIs<StudyUiState.Loading>(nextState)
         assertEquals(listOf("Kotlin", "Coroutines"), loadingState.request.topics)
         assertEquals("Kotlin\nCoroutines", loadingState.form.topicsText)
+        assertEquals(LocalLlmProvider.OLLAMA, loadingState.request.provider)
+        assertEquals(LocalLlmProvider.OLLAMA, loadingState.form.provider)
         assertEquals("focus on structured concurrency", loadingState.form.specificInstructions)
         assertTrue(loadingState.form.validationIssues.isEmpty())
+    }
+
+    @Test
+    fun `provider change updates input form state`() {
+        val nextState =
+            StudyUiStateReducer.reduce(
+                StudyUiState.initial(),
+                StudyUiEvent.ProviderChanged(LocalLlmProvider.OLLAMA),
+            )
+
+        val inputState = assertIs<StudyUiState.Input>(nextState)
+        assertEquals(LocalLlmProvider.OLLAMA, inputState.form.provider)
     }
 
     @Test

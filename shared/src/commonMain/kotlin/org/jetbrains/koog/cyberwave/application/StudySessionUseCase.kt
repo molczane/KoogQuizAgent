@@ -2,11 +2,13 @@ package org.jetbrains.koog.cyberwave.application
 
 import kotlinx.coroutines.CancellationException
 import org.jetbrains.koog.cyberwave.agent.workflow.StudyGenerationService
+import org.jetbrains.koog.cyberwave.data.llm.PlatformLocalLlmGateway
+import org.jetbrains.koog.cyberwave.data.llm.PlatformLocalLlmGatewayResult
 import org.jetbrains.koog.cyberwave.data.openai.OpenAiConfigurationError
 import org.jetbrains.koog.cyberwave.data.openai.OpenAiConfigurationErrorKind
-import org.jetbrains.koog.cyberwave.data.openai.PlatformOpenAiGateway
-import org.jetbrains.koog.cyberwave.data.openai.PlatformOpenAiGatewayResult
 import org.jetbrains.koog.cyberwave.data.wikipedia.WikipediaClient
+import org.jetbrains.koog.cyberwave.domain.model.LocalLlmDefaults
+import org.jetbrains.koog.cyberwave.domain.model.LocalLlmProvider
 import org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState
 import org.jetbrains.koog.cyberwave.domain.model.StudyRequestInput
 import org.jetbrains.koog.cyberwave.observability.NoOpStudyWorkflowTracer
@@ -19,7 +21,7 @@ import org.jetbrains.koog.cyberwave.presentation.model.StudyScreenModel
 
 class StudySessionUseCase(
     private val wikipediaClient: WikipediaClient,
-    private val openAiGateway: PlatformOpenAiGateway,
+    private val localLlmGateway: PlatformLocalLlmGateway,
     private val tracer: StudyWorkflowTracer = NoOpStudyWorkflowTracer,
 ) {
     suspend fun generate(input: StudyRequestInput): StudyScreenModel =
@@ -28,6 +30,7 @@ class StudySessionUseCase(
             attributes =
                 mapOf(
                     "requested_question_count" to input.maxQuestions.toString(),
+                    "requested_provider" to input.provider.name.lowercase(),
                 ),
             successAttributes = { result ->
                 mapOf(
@@ -40,22 +43,28 @@ class StudySessionUseCase(
                 when (
                     val gatewayResult =
                         tracer.traceSpan(
-                            name = "study_session.openai_gateway.open",
+                            name = "study_session.local_llm_gateway.open",
                             successAttributes = { result ->
                                 when (result) {
-                                    is PlatformOpenAiGatewayResult.Ready -> mapOf("gateway_outcome" to "ready")
-                                    is PlatformOpenAiGatewayResult.ConfigurationError ->
+                                    is PlatformLocalLlmGatewayResult.Ready ->
+                                        mapOf(
+                                            "gateway_outcome" to "ready",
+                                            "provider" to result.provider.name.lowercase(),
+                                        )
+
+                                    is PlatformLocalLlmGatewayResult.ConfigurationError ->
                                         mapOf(
                                             "gateway_outcome" to "configuration_error",
+                                            "provider" to result.provider.name.lowercase(),
                                             "configuration_kind" to result.error.kind.name.lowercase(),
                                         )
                                 }
                             },
                         ) {
-                            openAiGateway.open()
+                            localLlmGateway.open(input.provider)
                         }
                 ) {
-                    is PlatformOpenAiGatewayResult.Ready ->
+                    is PlatformLocalLlmGatewayResult.Ready ->
                         try {
                             StudyGenerationService(
                                 promptExecutor = gatewayResult.promptExecutor,
@@ -67,9 +76,10 @@ class StudySessionUseCase(
                             gatewayResult.promptExecutor.close()
                         }
 
-                    is PlatformOpenAiGatewayResult.ConfigurationError ->
+                    is PlatformLocalLlmGatewayResult.ConfigurationError ->
                         configurationErrorModel(
                             input = input,
+                            provider = gatewayResult.provider,
                             error = gatewayResult.error,
                         )
                 }
@@ -95,16 +105,17 @@ class StudySessionUseCase(
             error =
                 StudyScreenError(
                     title = GENERATION_ERROR_TITLE,
-                    message = generationErrorMessage(cause),
+                    message = generationErrorMessage(input.provider, cause),
                 ),
         )
 
     private fun configurationErrorModel(
         input: StudyRequestInput,
+        provider: LocalLlmProvider,
         error: OpenAiConfigurationError,
     ): StudyScreenModel =
         StudyScreenModel(
-            screenTitle = configurationScreenTitle(error.kind),
+            screenTitle = configurationScreenTitle(provider = provider, kind = error.kind),
             topics = StudyRequestParser.parseTopics(input.topicsText),
             state = StudyGenerationState.CONFIGURATION_ERROR,
             primaryAction = PrimaryAction(id = PrimaryActionId.RETRY, label = RETRY_LABEL),
@@ -115,18 +126,37 @@ class StudySessionUseCase(
                 ),
         )
 
-    private fun configurationScreenTitle(kind: OpenAiConfigurationErrorKind): String =
-        when (kind) {
-            OpenAiConfigurationErrorKind.MISSING_API_KEY -> "OpenAI setup required"
-            OpenAiConfigurationErrorKind.INVALID_MODE -> "Local direct mode required"
+    private fun configurationScreenTitle(
+        provider: LocalLlmProvider,
+        kind: OpenAiConfigurationErrorKind,
+    ): String =
+        when (provider) {
+            LocalLlmProvider.OPENAI ->
+                when (kind) {
+                    OpenAiConfigurationErrorKind.MISSING_API_KEY -> "OpenAI setup required"
+                    OpenAiConfigurationErrorKind.INVALID_MODE -> "Local direct mode required"
+                }
+
+            LocalLlmProvider.OLLAMA -> "Local Ollama setup required"
         }
 
-    private fun generationErrorMessage(cause: Throwable): String {
+    private fun generationErrorMessage(
+        provider: LocalLlmProvider,
+        cause: Throwable,
+    ): String {
         val reason = cause.message?.trim().orEmpty()
+        val setupGuidance =
+            when (provider) {
+                LocalLlmProvider.OPENAI -> "Check your network and OpenAI setup, then try again."
+                LocalLlmProvider.OLLAMA ->
+                    "Verify that Ollama is running locally at ${LocalLlmDefaults.OLLAMA_BASE_URL} " +
+                        "and that the ${LocalLlmDefaults.OLLAMA_MODEL_NAME} model is available, then try again."
+            }
+
         return if (reason.isEmpty()) {
-            "The local research or generation flow failed before a study payload could be produced. Check your network and OpenAI setup, then try again."
+            "The local research or generation flow failed before a study payload could be produced. $setupGuidance"
         } else {
-            "The local research or generation flow failed before a study payload could be produced. Reason: $reason"
+            "The local research or generation flow failed before a study payload could be produced. Reason: $reason. $setupGuidance"
         }
     }
 

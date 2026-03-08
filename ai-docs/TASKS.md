@@ -65,9 +65,9 @@ Status legend:
 
 ## Phase 4B: Local provider toggle and Ollama support
 
-* `T045` `planned` - Define a shared `LocalLlmProvider` model and extend the form/input state to carry provider selection.
-* `T046` `planned` - Replace the OpenAI-specific gateway with a provider-aware local LLM gateway that supports OpenAI and Ollama executors.
-* `T047` `planned` - Implement provider-specific local runtime configuration on JVM and WasmJS, keeping OpenAI key handling intact and Ollama on the default local host.
+* `T045` `done` - Define a shared `LocalLlmProvider` model and extend the form/input state to carry provider selection.
+* `T046` `done` - Replace the OpenAI-specific gateway with a provider-aware local LLM gateway that supports OpenAI and Ollama executors.
+* `T047` `done` - Implement provider-specific local runtime configuration on JVM and WasmJS, keeping OpenAI key handling intact and Ollama on the default local host.
 * `T048` `planned` - Add the UI toggle and helper copy that explains OpenAI setup vs local Ollama setup, including the requirement to run the Ollama model locally.
 * `T049` `planned` - Add tests and docs coverage for provider selection, gateway behavior, and failure messaging.
 

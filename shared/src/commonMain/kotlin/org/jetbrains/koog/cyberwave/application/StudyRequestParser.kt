@@ -83,6 +83,7 @@ object StudyRequestParser {
                     topics = normalizedTopics,
                     maxQuestions = input.maxQuestions,
                     difficulty = input.difficulty,
+                    provider = input.provider,
                     specificInstructions = normalizedInstructions,
                 ),
             )

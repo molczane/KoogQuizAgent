@@ -2,6 +2,7 @@ package org.jetbrains.koog.cyberwave.presentation.state
 
 import org.jetbrains.koog.cyberwave.application.StudyRequestConstraints
 import org.jetbrains.koog.cyberwave.domain.model.Difficulty
+import org.jetbrains.koog.cyberwave.domain.model.LocalLlmProvider
 import org.jetbrains.koog.cyberwave.domain.model.ValidatedStudyRequest
 import org.jetbrains.koog.cyberwave.domain.model.ValidationIssue
 
@@ -9,6 +10,7 @@ data class StudyFormState(
     val topicsText: String = "",
     val maxQuestions: Int = StudyRequestConstraints.MIN_QUESTIONS,
     val difficulty: Difficulty = Difficulty.MEDIUM,
+    val provider: LocalLlmProvider = LocalLlmProvider.OPENAI,
     val specificInstructions: String = "",
     val validationIssues: List<ValidationIssue> = emptyList(),
 ) {
@@ -24,6 +26,7 @@ data class StudyFormState(
             topicsText = request.topics.joinToString(separator = "\n"),
             maxQuestions = request.maxQuestions,
             difficulty = request.difficulty,
+            provider = request.provider,
             specificInstructions = request.specificInstructions.orEmpty(),
             validationIssues = emptyList(),
         )

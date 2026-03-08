@@ -68,6 +68,7 @@ class StudyAppState(
             topicsText = topics.joinToString(separator = "\n"),
             maxQuestions = maxQuestions,
             difficulty = difficulty,
+            provider = provider,
             specificInstructions = specificInstructions,
         )
 }
