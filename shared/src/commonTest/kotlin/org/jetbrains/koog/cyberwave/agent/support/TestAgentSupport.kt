@@ -67,6 +67,8 @@ object UnusedPromptExecutor : PromptExecutor {
 
 class ToolCallingSearchPromptExecutor(
     private val structuredResponseJson: String? = null,
+    private val scriptedSearchTopics: List<String>? = null,
+    private val completionMessage: String = StudyResearchWorkflow.SEARCH_STAGE_COMPLETE,
 ) : PromptExecutor {
     var executeCalls: Int = 0
         private set
@@ -122,8 +124,9 @@ class ToolCallingSearchPromptExecutor(
             nextTopicIndex = 0
         }
 
-        return if (nextTopicIndex < request.topics.size) {
-            val nextTopic = request.topics[nextTopicIndex]
+        val searchPlan = scriptedSearchTopics ?: request.topics
+        return if (nextTopicIndex < searchPlan.size) {
+            val nextTopic = searchPlan[nextTopicIndex]
             nextTopicIndex += 1
             emittedSearchToolTopics += nextTopic
             listOf(
@@ -137,7 +140,7 @@ class ToolCallingSearchPromptExecutor(
         } else {
             activeTopics = null
             nextTopicIndex = 0
-            listOf(Message.Assistant(StudyResearchWorkflow.SEARCH_STAGE_COMPLETE, ResponseMetaInfo.Empty))
+            listOf(Message.Assistant(completionMessage, ResponseMetaInfo.Empty))
         }
     }
 

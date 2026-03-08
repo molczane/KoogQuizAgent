@@ -128,6 +128,7 @@ object StudyResearchWorkflow {
                         attributes = emptyMap(),
                         successAttributes = { snapshot ->
                             mapOf(
+                                "tool_call_count" to snapshot.metadata.toolCallCount.toString(),
                                 "topic_count" to snapshot.searchResults.size.toString(),
                                 "total_result_count" to snapshot.searchResults.sumOf { topicResult -> topicResult.results.size }.toString(),
                             )
@@ -138,7 +139,7 @@ object StudyResearchWorkflow {
                         }
 
                         val messages = llm.readSession { prompt.messages }
-                        buildSearchSnapshot(messages)
+                        buildSearchSnapshot(messages = messages, completionMessage = completionMessage.trim())
                     }
                 }
 
@@ -178,6 +179,7 @@ object StudyResearchWorkflow {
 
                     ResearchSelectionSnapshot(
                         request = snapshot.request,
+                        searchStageMetadata = snapshot.metadata,
                         searchResults = snapshot.searchResults,
                         selectedArticles = selections,
                     )
@@ -222,6 +224,7 @@ object StudyResearchWorkflow {
 
                     ResearchMaterialsSnapshot(
                         request = snapshot.request,
+                        searchStageMetadata = snapshot.searchStageMetadata,
                         searchResults = snapshot.searchResults,
                         selectedArticles = snapshot.selectedArticles,
                         materials = materials,
@@ -263,6 +266,7 @@ object StudyResearchWorkflow {
                     val researchSnapshot =
                         StudyResearchSnapshot(
                             request = snapshot.request,
+                            searchStageMetadata = snapshot.searchStageMetadata,
                             searchResults = snapshot.searchResults,
                             selectedArticles = snapshot.selectedArticles,
                             materials = snapshot.materials,
@@ -304,30 +308,46 @@ object StudyResearchWorkflow {
         $SEARCH_STAGE_REQUEST_PREFIX${workflowJson.encodeToString(request)}
         """.trimIndent()
 
-    private fun buildSearchSnapshot(messages: List<Message>): ResearchSearchSnapshot {
+    private fun buildSearchSnapshot(
+        messages: List<Message>,
+        completionMessage: String,
+    ): ResearchSearchSnapshot {
         val request = extractSearchStageRequest(messages)
-        val topicResultsByTopic =
-            messages
-                .filterIsInstance<Message.Tool.Result>()
-                .filter { message -> message.tool == SearchWikipediaTool.NAME }
-                .map { message ->
-                    workflowJson.decodeFromString(SearchWikipediaTool.Result.serializer(), message.content)
-                }.associateBy(
-                    keySelector = { result -> result.topic.trim().lowercase() },
-                    valueTransform = { result -> result.results },
-                )
+        val toolResults = extractSearchToolResults(messages)
+        val normalizedRequestedTopics = request.topics.associateBy { topic -> topic.lowercase() }
+        val resultsByTopic = LinkedHashMap<String, List<org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaSearchResult>>()
+
+        toolResults.forEach { result ->
+            val canonicalTopic = normalizedRequestedTopics[result.topic.trim().lowercase()] ?: return@forEach
+            if (canonicalTopic !in resultsByTopic) {
+                resultsByTopic[canonicalTopic] = result.results
+            }
+        }
 
         return ResearchSearchSnapshot(
             request = request,
+            metadata =
+                SearchStageMetadata(
+                    toolCallCount = toolResults.size,
+                    completionMessage = completionMessage,
+                ),
             searchResults =
                 request.topics.map { topic ->
                     TopicWikipediaSearchResults(
                         topic = topic,
-                        results = topicResultsByTopic[topic.lowercase()].orEmpty(),
+                        results = resultsByTopic[topic].orEmpty(),
                     )
                 },
         )
     }
+
+    private fun extractSearchToolResults(messages: List<Message>): List<SearchWikipediaTool.Result> =
+        messages
+            .filterIsInstance<Message.Tool.Result>()
+            .filter { message -> message.tool == SearchWikipediaTool.NAME }
+            .map { message ->
+                workflowJson.decodeFromString(SearchWikipediaTool.Result.serializer(), message.content)
+            }
 
     private fun extractSearchStageRequest(messages: List<Message>): ValidatedStudyRequest {
         val requestJson =
@@ -364,17 +384,20 @@ object StudyResearchWorkflow {
 
     private data class ResearchSearchSnapshot(
         val request: ValidatedStudyRequest,
+        val metadata: SearchStageMetadata,
         val searchResults: List<TopicWikipediaSearchResults>,
     )
 
     private data class ResearchSelectionSnapshot(
         val request: ValidatedStudyRequest,
+        val searchStageMetadata: SearchStageMetadata,
         val searchResults: List<TopicWikipediaSearchResults>,
         val selectedArticles: List<TopicWikipediaSelections>,
     )
 
     private data class ResearchMaterialsSnapshot(
         val request: ValidatedStudyRequest,
+        val searchStageMetadata: SearchStageMetadata,
         val searchResults: List<TopicWikipediaSearchResults>,
         val selectedArticles: List<TopicWikipediaSelections>,
         val materials: List<TopicResearchMaterial>,

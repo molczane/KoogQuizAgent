@@ -18,8 +18,14 @@ data class TopicWikipediaSelections(
     val articles: List<SelectedWikipediaArticle>,
 )
 
+data class SearchStageMetadata(
+    val toolCallCount: Int,
+    val completionMessage: String,
+)
+
 data class StudyResearchSnapshot(
     val request: ValidatedStudyRequest,
+    val searchStageMetadata: SearchStageMetadata,
     val searchResults: List<TopicWikipediaSearchResults>,
     val selectedArticles: List<TopicWikipediaSelections>,
     val materials: List<TopicResearchMaterial>,
