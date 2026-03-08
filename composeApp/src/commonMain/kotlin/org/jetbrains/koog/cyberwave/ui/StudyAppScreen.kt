@@ -907,6 +907,7 @@ private fun ResultsHero(
         } else {
             (results.correctAnswers * 100) / results.totalQuestions
         }
+    val unansweredQuestions = (results.totalQuestions - results.answeredQuestions).coerceAtLeast(0)
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -916,7 +917,7 @@ private fun ResultsHero(
             ),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(
+        BoxWithConstraints(
             modifier =
                 Modifier
                     .background(
@@ -930,30 +931,102 @@ private fun ResultsHero(
                         ),
                     )
                     .padding(28.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            Text(
-                text = "QUIZ COMPLETE",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.tertiary,
-            )
-            Text(
-                text = screenModel.screenTitle,
-                style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "You answered ${results.correctAnswers} out of ${results.totalQuestions} question(s) correctly.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                InsightBadge(text = "$scorePercent% score")
-                InsightBadge(text = "${results.answeredQuestions} answered")
-                InsightBadge(text = form.difficulty.label)
+            val wideLayout = maxWidth >= 900.dp
+
+            if (wideLayout) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1.45f),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        Text(
+                            text = "QUIZ COMPLETE",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                        Text(
+                            text = screenModel.screenTitle,
+                            style = MaterialTheme.typography.displayLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "You answered ${results.correctAnswers} out of ${results.totalQuestions} question(s) correctly.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            InsightBadge(text = "$scorePercent% score")
+                            InsightBadge(text = "${results.answeredQuestions} answered")
+                            InsightBadge(text = form.difficulty.label)
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier.weight(0.85f),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(22.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            Text(
+                                text = "Performance snapshot",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            HeroMetric(
+                                title = "Correct answers",
+                                description = "${results.correctAnswers} out of ${results.totalQuestions} were correct.",
+                            )
+                            HeroMetric(
+                                title = "Unanswered",
+                                description = "$unansweredQuestions question(s) were left without a selected option.",
+                            )
+                            HeroMetric(
+                                title = "Review mode",
+                                description = "Read the explanations below to see why each answer was right or wrong.",
+                            )
+                        }
+                    }
+                }
+            } else {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    Text(
+                        text = "QUIZ COMPLETE",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                    Text(
+                        text = screenModel.screenTitle,
+                        style = MaterialTheme.typography.displayLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "You answered ${results.correctAnswers} out of ${results.totalQuestions} question(s) correctly.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        InsightBadge(text = "$scorePercent% score")
+                        InsightBadge(text = "${results.answeredQuestions} answered")
+                        InsightBadge(text = form.difficulty.label)
+                    }
+                }
             }
         }
     }
