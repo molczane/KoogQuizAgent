@@ -5,7 +5,7 @@ The active Phase 0 module layout is:
 * [/shared](./shared/src) for non-UI shared logic and multiplatform contracts.
 * [/composeApp](./composeApp/src) for Compose UI and platform entry points.
 
-The current web execution mode is local-only direct OpenAI usage. Do not commit API keys.
+The current web execution mode is local-only direct OpenAI usage. Do not commit API keys. This mode is insecure for deployment and exists only for local demo/testing of Koog on WasmJS.
 
 ### Build and Run Desktop (JVM) Application
 
@@ -32,6 +32,25 @@ in your IDE's toolbar or run it directly from the terminal:
   ```shell
   .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
   ```
+
+### Local-only WasmJS OpenAI setup
+
+The browser build does not read `OPENAI_API_KEY` from IntelliJ or terminal environment variables at runtime. For the current local-only WasmJS mode, configure the browser directly through `localStorage`:
+
+```js
+localStorage.setItem("cyberwave.openai.mode", "local_direct")
+localStorage.setItem("cyberwave.openai.apiKey", "YOUR_OPENAI_API_KEY")
+location.reload()
+```
+
+To clear the local browser setup:
+
+```js
+localStorage.removeItem("cyberwave.openai.mode")
+localStorage.removeItem("cyberwave.openai.apiKey")
+```
+
+This direct browser-key mode is local-only and insecure for deployment. If the app is ever deployed beyond local testing, WasmJS should switch to a server-backed proxy mode.
 
 ---
 
