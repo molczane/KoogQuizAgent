@@ -7,7 +7,7 @@ import ai.koog.prompt.llm.LLModel
 
 class PlatformOpenAiGateway(
     private val apiKeyProvider: ApiKeyProvider,
-    private val llmModel: LLModel = OpenAIModels.Chat.GPT5_2,
+    private val llmModel: LLModel = OpenAIModels.Chat.GPT5Mini,
     private val promptExecutorFactory: (String) -> PromptExecutor = ::simpleOpenAIExecutor,
 ) {
     fun open(): PlatformOpenAiGatewayResult =
