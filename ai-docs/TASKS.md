@@ -67,7 +67,7 @@ T
 
 * `T060` `done` - Add unit tests for validation, topic parsing, selection rules, and scoring logic.
 * `T061` `done` - Add Koog graph tests using mock LLM/tool facilities.
-* `T062` `planned` - Add contract tests for the structured output schema.
+* `T062` `done` - Add contract tests for the structured output schema.
 * `T063` `planned` - Add OpenTelemetry or equivalent tracing hooks suitable for Koog workflows.
 * `T064` `planned` - Add regression checks that ensure no OpenAI key is committed and the local-only web mode is documented.
 
