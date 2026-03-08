@@ -165,7 +165,7 @@ class StudyGenerationService(
         )
 
     private companion object {
-        private const val RESEARCH_MAX_ITERATIONS: Int = 12
+        private const val RESEARCH_MAX_ITERATIONS: Int = 32
         private const val RETRY_LABEL: String = "Retry"
         private const val VALIDATION_SCREEN_TITLE: String = "Fix the study request"
         private const val VALIDATION_ERROR_TITLE: String = "Your input needs adjustment"
@@ -176,7 +176,7 @@ class StudyGenerationService(
         private val RESEARCH_SYSTEM_PROMPT =
             """
             You execute a deterministic Wikipedia research workflow for a learning app.
-            Follow the graph order and never skip validation or evidence checks.
+            Follow the graph order, use only the tools exposed by the current stage, and never skip validation or evidence checks.
             """.trimIndent()
     }
 }

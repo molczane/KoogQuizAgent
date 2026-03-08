@@ -18,6 +18,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import org.jetbrains.koog.cyberwave.agent.support.ToolCallingSearchPromptExecutor
 import org.jetbrains.koog.cyberwave.agent.support.testLLModel
 import org.jetbrains.koog.cyberwave.data.openai.ApiKeyProvider
 import org.jetbrains.koog.cyberwave.data.openai.ApiKeyProviderResult
@@ -224,6 +225,7 @@ class StudySessionUseCaseTest {
     private class ClosablePromptExecutor(
         private val responseJson: String,
     ) : PromptExecutor {
+        private val delegate = ToolCallingSearchPromptExecutor(structuredResponseJson = responseJson)
         var closed: Boolean = false
             private set
 
@@ -231,18 +233,18 @@ class StudySessionUseCaseTest {
             prompt: Prompt,
             model: LLModel,
             tools: List<ToolDescriptor>,
-        ): List<Message.Response> = listOf(Message.Assistant(responseJson, ResponseMetaInfo.Empty))
+        ): List<Message.Response> = delegate.execute(prompt, model, tools)
 
         override fun executeStreaming(
             prompt: Prompt,
             model: LLModel,
             tools: List<ToolDescriptor>,
-        ): Flow<StreamFrame> = emptyFlow()
+        ): Flow<StreamFrame> = delegate.executeStreaming(prompt, model, tools)
 
         override suspend fun moderate(
             prompt: Prompt,
             model: LLModel,
-        ): ModerationResult = error("Moderation is not used in this test.")
+        ): ModerationResult = delegate.moderate(prompt, model)
 
         override fun close() {
             closed = true

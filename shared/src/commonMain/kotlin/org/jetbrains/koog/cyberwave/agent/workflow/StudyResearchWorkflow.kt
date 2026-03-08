@@ -3,7 +3,16 @@ package org.jetbrains.koog.cyberwave.agent.workflow
 import ai.koog.agents.core.agent.entity.AIAgentGraphStrategy
 import ai.koog.agents.core.dsl.builder.forwardTo
 import ai.koog.agents.core.dsl.builder.strategy
+import ai.koog.agents.core.dsl.extension.nodeExecuteTool
+import ai.koog.agents.core.dsl.extension.nodeLLMRequestOnlyCallingTools
+import ai.koog.agents.core.dsl.extension.nodeLLMSendToolResult
+import ai.koog.agents.core.dsl.extension.onAssistantMessage
 import ai.koog.agents.core.dsl.extension.onIsInstance
+import ai.koog.agents.core.dsl.extension.onToolCall
+import ai.koog.prompt.message.Message
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.jetbrains.koog.cyberwave.agent.tool.FetchWikipediaArticleTool
 import org.jetbrains.koog.cyberwave.agent.tool.SearchWikipediaTool
 import org.jetbrains.koog.cyberwave.application.StudyRequestParser
@@ -20,6 +29,9 @@ import org.jetbrains.koog.cyberwave.observability.traceSpan
 
 object StudyResearchWorkflow {
     const val STRATEGY_NAME: String = "study_research_workflow"
+    internal const val SEARCH_STAGE_COMPLETE: String = "SEARCH_STAGE_COMPLETE"
+    internal const val SEARCH_STAGE_REQUEST_PREFIX: String = "SEARCH_STAGE_REQUEST_JSON:"
+    private val workflowJson: Json = Json { ignoreUnknownKeys = true }
 
     fun strategy(
         wikipediaClient: WikipediaClient,
@@ -100,30 +112,44 @@ object StudyResearchWorkflow {
                 }
             }
 
-            val searchWikipedia by node<ResearchQueryPlan, ResearchSearchSnapshot>("searchWikipedia") { plan ->
-                tracer.traceSpan(
-                    name = "study_generation.research.search_wikipedia",
-                    attributes = mapOf("topic_count" to plan.request.topics.size.toString()),
-                    successAttributes = { snapshot ->
-                        mapOf(
-                            "topic_count" to snapshot.searchResults.size.toString(),
-                            "total_result_count" to snapshot.searchResults.sumOf { topicResult -> topicResult.results.size }.toString(),
-                        )
-                    },
-                ) {
-                    val searchResults =
-                        plan.request.topics.map { topic ->
-                            TopicWikipediaSearchResults(
-                                topic = topic,
-                                results = searchTool.execute(SearchWikipediaTool.Args(topic = topic)).results,
+            val searchWithLlmTools by subgraph<ResearchQueryPlan, ResearchSearchSnapshot>(
+                name = "searchWithLlmTools",
+                tools = listOf(searchTool),
+            ) {
+                val prepareSearchPrompt by node<ResearchQueryPlan, String>("prepareSearchPrompt") { plan ->
+                    buildSearchStagePrompt(plan.request)
+                }
+                val requestSearchTool by nodeLLMRequestOnlyCallingTools("requestSearchTool")
+                val executeSearchTool by nodeExecuteTool("executeSearchTool")
+                val sendSearchToolResult by nodeLLMSendToolResult("sendSearchToolResult")
+                val finalizeSearchResults by node<String, ResearchSearchSnapshot>("finalizeSearchResults") { completionMessage ->
+                    tracer.traceSpan(
+                        name = "study_generation.research.search_wikipedia",
+                        attributes = emptyMap(),
+                        successAttributes = { snapshot ->
+                            mapOf(
+                                "topic_count" to snapshot.searchResults.size.toString(),
+                                "total_result_count" to snapshot.searchResults.sumOf { topicResult -> topicResult.results.size }.toString(),
                             )
+                        },
+                    ) {
+                        require(completionMessage.trim() == SEARCH_STAGE_COMPLETE) {
+                            "Search stage must finish with $SEARCH_STAGE_COMPLETE."
                         }
 
-                    ResearchSearchSnapshot(
-                        request = plan.request,
-                        searchResults = searchResults,
-                    )
+                        val messages = llm.readSession { prompt.messages }
+                        buildSearchSnapshot(messages)
+                    }
                 }
+
+                edge(nodeStart forwardTo prepareSearchPrompt)
+                edge(prepareSearchPrompt forwardTo requestSearchTool)
+                edge(requestSearchTool forwardTo executeSearchTool onToolCall(searchTool))
+                edge(requestSearchTool forwardTo finalizeSearchResults onAssistantMessage { true })
+                edge(executeSearchTool forwardTo sendSearchToolResult)
+                edge(sendSearchToolResult forwardTo executeSearchTool onToolCall(searchTool))
+                edge(sendSearchToolResult forwardTo finalizeSearchResults onAssistantMessage { true })
+                edge(finalizeSearchResults forwardTo nodeFinish)
             }
 
             val selectArticles by node<ResearchSearchSnapshot, ResearchSelectionSnapshot>("selectArticles") { snapshot ->
@@ -262,12 +288,65 @@ object StudyResearchWorkflow {
                     .onIsInstance(ValidationNodeResult.Invalid::class)
                     .transformed { it.result },
             )
-            edge(prepareQueries forwardTo searchWikipedia)
-            edge(searchWikipedia forwardTo selectArticles)
+            edge(prepareQueries forwardTo searchWithLlmTools)
+            edge(searchWithLlmTools forwardTo selectArticles)
             edge(selectArticles forwardTo fetchArticles)
             edge(fetchArticles forwardTo checkEvidence)
             edge(checkEvidence forwardTo nodeFinish)
         }
+
+    private fun buildSearchStagePrompt(request: ValidatedStudyRequest): String =
+        """
+        Search stage for the CyberWave learning workflow.
+        Use the available `search_wikipedia` tool exactly once for each topic in the request payload.
+        Pass the topic text verbatim and keep limit at ${WikipediaResearchPolicy.SEARCH_RESULTS_TO_CONSIDER}.
+        After all required search calls are complete, reply with exactly $SEARCH_STAGE_COMPLETE and nothing else.
+        $SEARCH_STAGE_REQUEST_PREFIX${workflowJson.encodeToString(request)}
+        """.trimIndent()
+
+    private fun buildSearchSnapshot(messages: List<Message>): ResearchSearchSnapshot {
+        val request = extractSearchStageRequest(messages)
+        val topicResultsByTopic =
+            messages
+                .filterIsInstance<Message.Tool.Result>()
+                .filter { message -> message.tool == SearchWikipediaTool.NAME }
+                .map { message ->
+                    workflowJson.decodeFromString(SearchWikipediaTool.Result.serializer(), message.content)
+                }.associateBy(
+                    keySelector = { result -> result.topic.trim().lowercase() },
+                    valueTransform = { result -> result.results },
+                )
+
+        return ResearchSearchSnapshot(
+            request = request,
+            searchResults =
+                request.topics.map { topic ->
+                    TopicWikipediaSearchResults(
+                        topic = topic,
+                        results = topicResultsByTopic[topic.lowercase()].orEmpty(),
+                    )
+                },
+        )
+    }
+
+    private fun extractSearchStageRequest(messages: List<Message>): ValidatedStudyRequest {
+        val requestJson =
+            messages
+                .asReversed()
+                .asSequence()
+                .filterIsInstance<Message.User>()
+                .mapNotNull { message ->
+                    message.content
+                        .lineSequence()
+                        .firstOrNull { line -> line.startsWith(SEARCH_STAGE_REQUEST_PREFIX) }
+                        ?.removePrefix(SEARCH_STAGE_REQUEST_PREFIX)
+                        ?.trim()
+                        ?.takeIf(String::isNotEmpty)
+                }.firstOrNull()
+                ?: error("Search stage request payload is missing from the LLM prompt history.")
+
+        return workflowJson.decodeFromString(ValidatedStudyRequest.serializer(), requestJson)
+    }
 
     private sealed interface ValidationNodeResult {
         data class Valid(

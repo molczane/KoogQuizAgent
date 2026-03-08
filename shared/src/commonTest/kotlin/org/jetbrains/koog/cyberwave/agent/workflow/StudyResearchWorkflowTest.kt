@@ -7,6 +7,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import org.jetbrains.koog.cyberwave.agent.support.ToolCallingSearchPromptExecutor
 import org.jetbrains.koog.cyberwave.agent.support.UnusedPromptExecutor
 import org.jetbrains.koog.cyberwave.agent.support.testAgentConfig
 import org.jetbrains.koog.cyberwave.agent.tool.wikipediaToolRegistry
@@ -27,14 +28,14 @@ class StudyResearchWorkflowTest {
 
         val validateInput = strategy.metadata.nodesMap.values.single { node -> node.name == "validateInput" }
         val prepareQueries = strategy.metadata.nodesMap.values.single { node -> node.name == "prepareQueries" }
-        val searchWikipedia = strategy.metadata.nodesMap.values.single { node -> node.name == "searchWikipedia" }
+        val searchWithLlmTools = strategy.metadata.nodesMap.values.single { node -> node.name == "searchWithLlmTools" }
         val selectArticles = strategy.metadata.nodesMap.values.single { node -> node.name == "selectArticles" }
         val fetchArticles = strategy.metadata.nodesMap.values.single { node -> node.name == "fetchArticles" }
         val checkEvidence = strategy.metadata.nodesMap.values.single { node -> node.name == "checkEvidence" }
 
         assertEquals(setOf("prepareQueries", "__finish__"), validateInput.edges.map { edge -> edge.toNode.name }.toSet())
-        assertEquals(listOf("searchWikipedia"), prepareQueries.edges.map { edge -> edge.toNode.name })
-        assertEquals(listOf("selectArticles"), searchWikipedia.edges.map { edge -> edge.toNode.name })
+        assertEquals(listOf("searchWithLlmTools"), prepareQueries.edges.map { edge -> edge.toNode.name })
+        assertEquals(listOf("selectArticles"), searchWithLlmTools.edges.map { edge -> edge.toNode.name })
         assertEquals(listOf("fetchArticles"), selectArticles.edges.map { edge -> edge.toNode.name })
         assertEquals(listOf("checkEvidence"), fetchArticles.edges.map { edge -> edge.toNode.name })
         assertEquals(listOf("__finish__"), checkEvidence.edges.map { edge -> edge.toNode.name })
@@ -44,9 +45,10 @@ class StudyResearchWorkflowTest {
     fun strategyRunsSearchSelectionFetchAndEvidenceStagesInOrder() = runTest {
         val wikipediaClient = RecordingWikipediaClient()
         val strategy = StudyResearchWorkflow.strategy(wikipediaClient)
+        val promptExecutor = ToolCallingSearchPromptExecutor()
         val agent =
             AIAgent(
-                promptExecutor = UnusedPromptExecutor,
+                promptExecutor = promptExecutor,
                 agentConfig = testAgentConfig(),
                 strategy = strategy,
                 toolRegistry = wikipediaToolRegistry(wikipediaClient),
@@ -72,6 +74,8 @@ class StudyResearchWorkflowTest {
             ),
             wikipediaClient.calls,
         )
+        assertEquals(listOf("Kotlin", "Compose Multiplatform"), promptExecutor.emittedSearchToolTopics)
+        assertEquals(3, promptExecutor.searchStageCalls)
         assertEquals(listOf("Kotlin", "Compose Multiplatform"), ready.snapshot.request.topics)
         assertEquals(2, ready.snapshot.materials.size)
         assertEquals(EvidenceStatus.SUFFICIENT, ready.snapshot.evidence.status)
@@ -113,9 +117,10 @@ class StudyResearchWorkflowTest {
     fun strategyReturnsInsufficientSourcesWhenEvidenceRemainsDisambiguationOnly() = runTest {
         val wikipediaClient = RecordingWikipediaClient()
         val strategy = StudyResearchWorkflow.strategy(wikipediaClient)
+        val promptExecutor = ToolCallingSearchPromptExecutor()
         val agent =
             AIAgent(
-                promptExecutor = UnusedPromptExecutor,
+                promptExecutor = promptExecutor,
                 agentConfig = testAgentConfig(),
                 strategy = strategy,
                 toolRegistry = wikipediaToolRegistry(wikipediaClient),
@@ -139,6 +144,8 @@ class StudyResearchWorkflowTest {
             ),
             wikipediaClient.calls,
         )
+        assertEquals(listOf("Mercury"), promptExecutor.emittedSearchToolTopics)
+        assertEquals(2, promptExecutor.searchStageCalls)
         assertEquals(EvidenceStatus.INSUFFICIENT, insufficient.snapshot.evidence.status)
         assertEquals(listOf("Mercury"), insufficient.snapshot.evidence.missingTopics)
         assertEquals(0, insufficient.snapshot.effectiveQuestionCount)
@@ -148,9 +155,10 @@ class StudyResearchWorkflowTest {
     fun strategyReusesFetchedArticleWhenMultipleTopicsResolveToTheSamePage() = runTest {
         val wikipediaClient = RecordingWikipediaClient()
         val strategy = StudyResearchWorkflow.strategy(wikipediaClient)
+        val promptExecutor = ToolCallingSearchPromptExecutor()
         val agent =
             AIAgent(
-                promptExecutor = UnusedPromptExecutor,
+                promptExecutor = promptExecutor,
                 agentConfig = testAgentConfig(),
                 strategy = strategy,
                 toolRegistry = wikipediaToolRegistry(wikipediaClient),
@@ -168,6 +176,8 @@ class StudyResearchWorkflowTest {
         val ready = assertIs<StudyResearchWorkflowResult.ReadyForGeneration>(result)
         val articleCalls = wikipediaClient.calls.filter { call -> call.startsWith("article:") }
 
+        assertEquals(listOf("JVM", "Java Virtual Machine"), promptExecutor.emittedSearchToolTopics)
+        assertEquals(3, promptExecutor.searchStageCalls)
         assertEquals(listOf("article:Java Virtual Machine"), articleCalls)
         assertTrue(ready.snapshot.materials.all { material -> material.articles.single().summary.title == "Java Virtual Machine" })
     }

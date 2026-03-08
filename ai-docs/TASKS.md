@@ -50,7 +50,7 @@ Status legend:
 ## Phase 3B: LLM-mediated tool orchestration refactor
 
 * `T035` `done` - Design stage-scoped search and fetch subgraphs where the LLM can call tools but only from an explicit per-stage allowlist.
-* `T036` `planned` - Refactor the search stage so the LLM requests Wikipedia searches through Koog tool-calling nodes instead of direct Kotlin tool execution.
+* `T036` `done` - Refactor the search stage so the LLM requests Wikipedia searches through Koog tool-calling nodes instead of direct Kotlin tool execution.
 * `T037` `planned` - Preserve deterministic article selection and evidence policies while converting tool-call results back into workflow state.
 * `T038` `planned` - Refactor the fetch stage so the LLM requests article fetches through Koog tool-calling nodes instead of direct Kotlin tool execution.
 * `T039` `planned` - Add graph and integration tests that prove tool routing, stage-limited tool access, and no retrieval-tool leakage into final payload generation.

@@ -7,7 +7,7 @@ CyberWave is a Kotlin Multiplatform workshop app that demonstrates how to build 
 * generates a single-choice quiz
 * runs from one shared codebase on Desktop JVM and Web WasmJS
 
-The app is intentionally set up for local workshop use. The current WasmJS mode uses a direct OpenAI key in the browser, which is acceptable only for local demos and testing. It is not a secure deployment model.
+The app is intentionally set up for local workshop use. The current WasmJS mode uses a direct OpenAI key in the browser, which is acceptable only for local demos and testing. It is insecure for deployment and not a secure deployment model.
 
 ## Workshop setup
 

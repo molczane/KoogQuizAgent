@@ -1,14 +1,5 @@
 package org.jetbrains.koog.cyberwave.agent.workflow
 
-import ai.koog.agents.core.tools.ToolDescriptor
-import ai.koog.prompt.dsl.ModerationResult
-import ai.koog.prompt.dsl.Prompt
-import ai.koog.prompt.executor.model.PromptExecutor
-import ai.koog.prompt.message.Message
-import ai.koog.prompt.message.ResponseMetaInfo
-import ai.koog.prompt.streaming.StreamFrame
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -17,6 +8,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import org.jetbrains.koog.cyberwave.agent.support.ToolCallingSearchPromptExecutor
 import org.jetbrains.koog.cyberwave.agent.support.testLLModel
 import org.jetbrains.koog.cyberwave.data.wikipedia.WikipediaClient
 import org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticle
@@ -37,7 +29,7 @@ import org.jetbrains.koog.cyberwave.presentation.model.StudyScreenModel
 class StudyGenerationServiceTest {
     @Test
     fun generateReturnsValidationErrorWithoutInvokingStructuredGeneration() = runTest {
-        val promptExecutor = RecordingPromptExecutor(responseJson = validReadyPayloadJson())
+        val promptExecutor = ToolCallingSearchPromptExecutor(structuredResponseJson = validReadyPayloadJson())
         val service =
             StudyGenerationService(
                 promptExecutor = promptExecutor,
@@ -63,7 +55,7 @@ class StudyGenerationServiceTest {
 
     @Test
     fun generateReturnsInsufficientSourcesWithoutInvokingStructuredGeneration() = runTest {
-        val promptExecutor = RecordingPromptExecutor(responseJson = validReadyPayloadJson())
+        val promptExecutor = ToolCallingSearchPromptExecutor(structuredResponseJson = validReadyPayloadJson())
         val service =
             StudyGenerationService(
                 promptExecutor = promptExecutor,
@@ -84,12 +76,13 @@ class StudyGenerationServiceTest {
         assertEquals("Not enough evidence yet", result.screenTitle)
         assertEquals(PrimaryActionId.RETRY, result.primaryAction?.id)
         assertContains(result.error?.message.orEmpty(), "Compose Multiplatform")
-        assertEquals(0, promptExecutor.executeCalls)
+        assertEquals(3, promptExecutor.searchStageCalls)
+        assertEquals(0, promptExecutor.structuredPayloadCalls)
     }
 
     @Test
     fun generateUsesStructuredPayloadGenerationForReadySnapshots() = runTest {
-        val promptExecutor = RecordingPromptExecutor(responseJson = validReadyPayloadJson())
+        val promptExecutor = ToolCallingSearchPromptExecutor(structuredResponseJson = validReadyPayloadJson())
         val tracer = RecordingStudyWorkflowTracer()
         val service =
             StudyGenerationService(
@@ -111,7 +104,9 @@ class StudyGenerationServiceTest {
         assertEquals(StudyGenerationState.READY, result.state)
         assertEquals("Ready Kotlin quiz", result.screenTitle)
         assertEquals(PrimaryActionId.START_QUIZ, result.primaryAction?.id)
-        assertEquals(1, promptExecutor.executeCalls)
+        assertEquals(2, promptExecutor.searchStageCalls)
+        assertEquals(1, promptExecutor.structuredPayloadCalls)
+        assertEquals(listOf("Kotlin"), promptExecutor.emittedSearchToolTopics)
         assertContains(
             tracer.events.map { event -> "${event.spanName}:${event.status}" },
             "study_generation.payload.generate:${StudyWorkflowTraceStatus.SUCCEEDED}",
@@ -133,7 +128,7 @@ class StudyGenerationServiceTest {
 
     @Test
     fun generateEmitsFailedTraceWhenPayloadGenerationBreaksSchemaExpectations() = runTest {
-        val promptExecutor = RecordingPromptExecutor(responseJson = invalidReadyPayloadJson())
+        val promptExecutor = ToolCallingSearchPromptExecutor(structuredResponseJson = invalidReadyPayloadJson())
         val tracer = RecordingStudyWorkflowTracer()
         val service =
             StudyGenerationService(
@@ -163,6 +158,8 @@ class StudyGenerationServiceTest {
             tracer.events.map { event -> "${event.spanName}:${event.status}" },
             "study_generation.service.generate:${StudyWorkflowTraceStatus.FAILED}",
         )
+        assertEquals(2, promptExecutor.searchStageCalls)
+        assertEquals(1, promptExecutor.structuredPayloadCalls)
     }
 
     private class ReadyWikipediaClient : WikipediaClient {
@@ -232,35 +229,6 @@ class StudyGenerationServiceTest {
                     ),
                 plainTextContent = List(140) { index -> "Kotlin detail ${index + 1}" }.joinToString(separator = " "),
             )
-    }
-
-    private class RecordingPromptExecutor(
-        private val responseJson: String,
-    ) : PromptExecutor {
-        var executeCalls: Int = 0
-            private set
-
-        override suspend fun execute(
-            prompt: Prompt,
-            model: ai.koog.prompt.llm.LLModel,
-            tools: List<ToolDescriptor>,
-        ): List<Message.Response> {
-            executeCalls += 1
-            return listOf(Message.Assistant(responseJson, ResponseMetaInfo.Empty))
-        }
-
-        override fun executeStreaming(
-            prompt: Prompt,
-            model: ai.koog.prompt.llm.LLModel,
-            tools: List<ToolDescriptor>,
-        ): Flow<StreamFrame> = emptyFlow()
-
-        override suspend fun moderate(
-            prompt: Prompt,
-            model: ai.koog.prompt.llm.LLModel,
-        ): ModerationResult = error("Moderation is not used in this test.")
-
-        override fun close() = Unit
     }
 
     private companion object {

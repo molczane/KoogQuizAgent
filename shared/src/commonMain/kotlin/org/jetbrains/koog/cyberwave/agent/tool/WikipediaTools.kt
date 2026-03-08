@@ -16,7 +16,7 @@ class SearchWikipediaTool(
 ) : Tool<SearchWikipediaTool.Args, SearchWikipediaTool.Result>(
         argsSerializer = Args.serializer(),
         resultSerializer = Result.serializer(),
-        name = "search_wikipedia",
+        name = NAME,
         description =
             """
             Search English Wikipedia for a single learning topic and return candidate articles.
@@ -59,6 +59,10 @@ class SearchWikipediaTool(
             limit = args.limit,
             results = wikipediaClient.search(query = args.topic, limit = args.limit),
         )
+
+    companion object {
+        const val NAME: String = "search_wikipedia"
+    }
 }
 
 class FetchWikipediaSummaryTool(
@@ -66,7 +70,7 @@ class FetchWikipediaSummaryTool(
 ) : Tool<FetchWikipediaSummaryTool.Args, WikipediaArticleSummary>(
         argsSerializer = Args.serializer(),
         resultSerializer = WikipediaArticleSummary.serializer(),
-        name = "fetch_wikipedia_summary",
+        name = NAME,
         description =
             """
             Fetch the intro summary and metadata for a specific Wikipedia article title.
@@ -87,6 +91,10 @@ class FetchWikipediaSummaryTool(
 
     override suspend fun execute(args: Args): WikipediaArticleSummary =
         wikipediaClient.fetchArticleSummary(title = args.title)
+
+    companion object {
+        const val NAME: String = "fetch_wikipedia_summary"
+    }
 }
 
 class FetchWikipediaArticleTool(
@@ -94,7 +102,7 @@ class FetchWikipediaArticleTool(
 ) : Tool<FetchWikipediaArticleTool.Args, WikipediaArticle>(
         argsSerializer = Args.serializer(),
         resultSerializer = WikipediaArticle.serializer(),
-        name = "fetch_wikipedia_article",
+        name = NAME,
         description =
             """
             Fetch the full plain-text content and summary metadata for a specific Wikipedia article title.
@@ -115,6 +123,10 @@ class FetchWikipediaArticleTool(
 
     override suspend fun execute(args: Args): WikipediaArticle =
         wikipediaClient.fetchArticle(title = args.title)
+
+    companion object {
+        const val NAME: String = "fetch_wikipedia_article"
+    }
 }
 
 fun wikipediaToolRegistry(wikipediaClient: WikipediaClient): ToolRegistry =
