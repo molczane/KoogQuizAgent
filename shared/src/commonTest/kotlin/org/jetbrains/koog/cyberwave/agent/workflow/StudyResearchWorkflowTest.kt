@@ -30,14 +30,14 @@ class StudyResearchWorkflowTest {
         val prepareQueries = strategy.metadata.nodesMap.values.single { node -> node.name == "prepareQueries" }
         val searchWithLlmTools = strategy.metadata.nodesMap.values.single { node -> node.name == "searchWithLlmTools" }
         val selectArticles = strategy.metadata.nodesMap.values.single { node -> node.name == "selectArticles" }
-        val fetchArticles = strategy.metadata.nodesMap.values.single { node -> node.name == "fetchArticles" }
+        val fetchWithLlmTools = strategy.metadata.nodesMap.values.single { node -> node.name == "fetchWithLlmTools" }
         val checkEvidence = strategy.metadata.nodesMap.values.single { node -> node.name == "checkEvidence" }
 
         assertEquals(setOf("prepareQueries", "__finish__"), validateInput.edges.map { edge -> edge.toNode.name }.toSet())
         assertEquals(listOf("searchWithLlmTools"), prepareQueries.edges.map { edge -> edge.toNode.name })
         assertEquals(listOf("selectArticles"), searchWithLlmTools.edges.map { edge -> edge.toNode.name })
-        assertEquals(listOf("fetchArticles"), selectArticles.edges.map { edge -> edge.toNode.name })
-        assertEquals(listOf("checkEvidence"), fetchArticles.edges.map { edge -> edge.toNode.name })
+        assertEquals(listOf("fetchWithLlmTools"), selectArticles.edges.map { edge -> edge.toNode.name })
+        assertEquals(listOf("checkEvidence"), fetchWithLlmTools.edges.map { edge -> edge.toNode.name })
         assertEquals(listOf("__finish__"), checkEvidence.edges.map { edge -> edge.toNode.name })
     }
 
@@ -76,8 +76,12 @@ class StudyResearchWorkflowTest {
         )
         assertEquals(listOf("Kotlin", "Compose Multiplatform"), promptExecutor.emittedSearchToolTopics)
         assertEquals(3, promptExecutor.searchStageCalls)
+        assertEquals(listOf("Kotlin", "Compose Multiplatform"), promptExecutor.emittedFetchToolTitles)
+        assertEquals(3, promptExecutor.fetchStageCalls)
         assertEquals(2, ready.snapshot.searchStageMetadata.toolCallCount)
         assertEquals(StudyResearchWorkflow.SEARCH_STAGE_COMPLETE, ready.snapshot.searchStageMetadata.completionMessage)
+        assertEquals(2, ready.snapshot.fetchStageMetadata.toolCallCount)
+        assertEquals(StudyResearchWorkflow.FETCH_STAGE_COMPLETE, ready.snapshot.fetchStageMetadata.completionMessage)
         assertEquals(listOf("Kotlin", "Compose Multiplatform"), ready.snapshot.request.topics)
         assertEquals(2, ready.snapshot.materials.size)
         assertEquals(EvidenceStatus.SUFFICIENT, ready.snapshot.evidence.status)
@@ -134,6 +138,54 @@ class StudyResearchWorkflowTest {
         assertEquals(
             listOf("Kotlin", "Compose Multiplatform"),
             ready.snapshot.materials.map { material -> material.topic },
+        )
+    }
+
+    @Test
+    fun strategyCollapsesOutOfOrderDuplicateFetchToolCallsIntoStableMaterials() = runTest {
+        val wikipediaClient = RecordingWikipediaClient()
+        val strategy = StudyResearchWorkflow.strategy(wikipediaClient)
+        val promptExecutor =
+            ToolCallingSearchPromptExecutor(
+                scriptedFetchTitles = listOf("Compose Multiplatform", "Kotlin", "Compose Multiplatform"),
+            )
+        val agent =
+            AIAgent(
+                promptExecutor = promptExecutor,
+                agentConfig = testAgentConfig(),
+                strategy = strategy,
+                toolRegistry = wikipediaToolRegistry(wikipediaClient),
+            )
+
+        val result =
+            agent.run(
+                StudyRequestInput(
+                    topicsText = "Kotlin, Compose Multiplatform",
+                    maxQuestions = 3,
+                    difficulty = Difficulty.MEDIUM,
+                ),
+            )
+
+        val ready = assertIs<StudyResearchWorkflowResult.ReadyForGeneration>(result)
+        val articleCalls = wikipediaClient.calls.filter { call -> call.startsWith("article:") }
+
+        assertEquals(
+            listOf(
+                "article:Compose Multiplatform",
+                "article:Kotlin",
+                "article:Compose Multiplatform",
+            ),
+            articleCalls,
+        )
+        assertEquals(listOf("Compose Multiplatform", "Kotlin", "Compose Multiplatform"), promptExecutor.emittedFetchToolTitles)
+        assertEquals(3, ready.snapshot.fetchStageMetadata.toolCallCount)
+        assertEquals(
+            listOf("Kotlin", "Compose Multiplatform"),
+            ready.snapshot.materials.map { material -> material.topic },
+        )
+        assertEquals(
+            listOf("Kotlin", "Compose Multiplatform"),
+            ready.snapshot.materials.map { material -> material.articles.single().summary.title },
         )
     }
 
@@ -198,7 +250,10 @@ class StudyResearchWorkflowTest {
         )
         assertEquals(listOf("Mercury"), promptExecutor.emittedSearchToolTopics)
         assertEquals(2, promptExecutor.searchStageCalls)
+        assertEquals(listOf("Mercury (disambiguation)"), promptExecutor.emittedFetchToolTitles)
+        assertEquals(2, promptExecutor.fetchStageCalls)
         assertEquals(1, insufficient.snapshot.searchStageMetadata.toolCallCount)
+        assertEquals(1, insufficient.snapshot.fetchStageMetadata.toolCallCount)
         assertEquals(EvidenceStatus.INSUFFICIENT, insufficient.snapshot.evidence.status)
         assertEquals(listOf("Mercury"), insufficient.snapshot.evidence.missingTopics)
         assertEquals(0, insufficient.snapshot.effectiveQuestionCount)
@@ -231,7 +286,10 @@ class StudyResearchWorkflowTest {
 
         assertEquals(listOf("JVM", "Java Virtual Machine"), promptExecutor.emittedSearchToolTopics)
         assertEquals(3, promptExecutor.searchStageCalls)
+        assertEquals(listOf("Java Virtual Machine"), promptExecutor.emittedFetchToolTitles)
+        assertEquals(2, promptExecutor.fetchStageCalls)
         assertEquals(2, ready.snapshot.searchStageMetadata.toolCallCount)
+        assertEquals(1, ready.snapshot.fetchStageMetadata.toolCallCount)
         assertEquals(listOf("article:Java Virtual Machine"), articleCalls)
         assertTrue(ready.snapshot.materials.all { material -> material.articles.single().summary.title == "Java Virtual Machine" })
     }

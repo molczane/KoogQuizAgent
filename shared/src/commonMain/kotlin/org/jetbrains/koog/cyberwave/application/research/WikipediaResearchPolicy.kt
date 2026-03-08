@@ -1,9 +1,11 @@
 package org.jetbrains.koog.cyberwave.application.research
 
+import kotlinx.serialization.Serializable
 import org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticle
 import org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaSearchResult
 import org.jetbrains.koog.cyberwave.domain.model.ResearchSource
 
+@Serializable
 data class SelectedWikipediaArticle(
     val topic: String,
     val pageId: Long? = null,

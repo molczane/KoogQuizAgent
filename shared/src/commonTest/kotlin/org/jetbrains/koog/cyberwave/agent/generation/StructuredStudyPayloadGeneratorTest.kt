@@ -18,6 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import org.jetbrains.koog.cyberwave.agent.support.testLLModel
+import org.jetbrains.koog.cyberwave.agent.workflow.FetchStageMetadata
 import org.jetbrains.koog.cyberwave.agent.workflow.SearchStageMetadata
 import org.jetbrains.koog.cyberwave.agent.workflow.StudyResearchSnapshot
 import org.jetbrains.koog.cyberwave.agent.workflow.StudyResearchWorkflow
@@ -262,6 +263,11 @@ class StructuredStudyPayloadGeneratorTest {
                 SearchStageMetadata(
                     toolCallCount = 2,
                     completionMessage = StudyResearchWorkflow.SEARCH_STAGE_COMPLETE,
+                ),
+            fetchStageMetadata =
+                FetchStageMetadata(
+                    toolCallCount = 2,
+                    completionMessage = StudyResearchWorkflow.FETCH_STAGE_COMPLETE,
                 ),
             searchResults =
                 listOf(

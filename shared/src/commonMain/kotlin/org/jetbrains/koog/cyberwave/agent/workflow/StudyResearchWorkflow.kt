@@ -31,6 +31,8 @@ object StudyResearchWorkflow {
     const val STRATEGY_NAME: String = "study_research_workflow"
     internal const val SEARCH_STAGE_COMPLETE: String = "SEARCH_STAGE_COMPLETE"
     internal const val SEARCH_STAGE_REQUEST_PREFIX: String = "SEARCH_STAGE_REQUEST_JSON:"
+    internal const val FETCH_STAGE_COMPLETE: String = "FETCH_STAGE_COMPLETE"
+    internal const val FETCH_STAGE_REQUEST_PREFIX: String = "FETCH_STAGE_REQUEST_JSON:"
     private val workflowJson: Json = Json { ignoreUnknownKeys = true }
 
     fun strategy(
@@ -186,50 +188,52 @@ object StudyResearchWorkflow {
                 }
             }
 
-            val fetchArticles by node<ResearchSelectionSnapshot, ResearchMaterialsSnapshot>("fetchArticles") { snapshot ->
-                tracer.traceSpan(
-                    name = "study_generation.research.fetch_articles",
-                    attributes = mapOf("topic_count" to snapshot.selectedArticles.size.toString()),
-                    successAttributes = { materialsSnapshot ->
-                        mapOf(
-                            "topic_count" to materialsSnapshot.materials.size.toString(),
-                            "material_article_count" to
-                                materialsSnapshot.materials.sumOf { material -> material.articles.size }.toString(),
-                            "unique_article_count" to
-                                materialsSnapshot.materials
-                                    .flatMap { material -> material.articles }
-                                    .distinctBy { article -> article.summary.pageId }
-                                    .size
-                                    .toString(),
-                        )
-                    },
-                ) {
-                    val articleCache = LinkedHashMap<String, org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticle>()
-                    val materials =
-                        snapshot.selectedArticles.map { topicSelection ->
-                            val articles =
-                                topicSelection.articles.map { selectedArticle ->
-                                    articleCache.getOrPut(selectedArticle.title) {
-                                        fetchArticleTool.execute(
-                                            FetchWikipediaArticleTool.Args(title = selectedArticle.title),
-                                        )
-                                    }
-                                }
-
-                            TopicResearchMaterial(
-                                topic = topicSelection.topic,
-                                articles = articles,
+            val fetchWithLlmTools by subgraph<ResearchSelectionSnapshot, ResearchMaterialsSnapshot>(
+                name = "fetchWithLlmTools",
+                tools = listOf(fetchArticleTool),
+            ) {
+                val prepareFetchPrompt by node<ResearchSelectionSnapshot, String>("prepareFetchPrompt") { snapshot ->
+                    buildFetchStagePrompt(snapshot)
+                }
+                val requestFetchTool by nodeLLMRequestOnlyCallingTools("requestFetchTool")
+                val executeFetchTool by nodeExecuteTool("executeFetchTool")
+                val sendFetchToolResult by nodeLLMSendToolResult("sendFetchToolResult")
+                val finalizeFetchedMaterials by node<String, ResearchMaterialsSnapshot>("finalizeFetchedMaterials") { completionMessage ->
+                    tracer.traceSpan(
+                        name = "study_generation.research.fetch_articles",
+                        attributes = emptyMap(),
+                        successAttributes = { materialsSnapshot ->
+                            mapOf(
+                                "tool_call_count" to materialsSnapshot.fetchStageMetadata.toolCallCount.toString(),
+                                "topic_count" to materialsSnapshot.materials.size.toString(),
+                                "material_article_count" to
+                                    materialsSnapshot.materials.sumOf { material -> material.articles.size }.toString(),
+                                "unique_article_count" to
+                                    materialsSnapshot.materials
+                                        .flatMap { material -> material.articles }
+                                        .distinctBy { article -> article.summary.pageId }
+                                        .size
+                                        .toString(),
                             )
+                        },
+                    ) {
+                        require(completionMessage.trim() == FETCH_STAGE_COMPLETE) {
+                            "Fetch stage must finish with $FETCH_STAGE_COMPLETE."
                         }
 
-                    ResearchMaterialsSnapshot(
-                        request = snapshot.request,
-                        searchStageMetadata = snapshot.searchStageMetadata,
-                        searchResults = snapshot.searchResults,
-                        selectedArticles = snapshot.selectedArticles,
-                        materials = materials,
-                    )
+                        val messages = llm.readSession { prompt.messages }
+                        buildFetchMaterialsSnapshot(messages = messages, completionMessage = completionMessage.trim())
+                    }
                 }
+
+                edge(nodeStart forwardTo prepareFetchPrompt)
+                edge(prepareFetchPrompt forwardTo requestFetchTool)
+                edge(requestFetchTool forwardTo executeFetchTool onToolCall(fetchArticleTool))
+                edge(requestFetchTool forwardTo finalizeFetchedMaterials onAssistantMessage { true })
+                edge(executeFetchTool forwardTo sendFetchToolResult)
+                edge(sendFetchToolResult forwardTo executeFetchTool onToolCall(fetchArticleTool))
+                edge(sendFetchToolResult forwardTo finalizeFetchedMaterials onAssistantMessage { true })
+                edge(finalizeFetchedMaterials forwardTo nodeFinish)
             }
 
             val checkEvidence by node<ResearchMaterialsSnapshot, StudyResearchWorkflowResult>("checkEvidence") { snapshot ->
@@ -267,6 +271,7 @@ object StudyResearchWorkflow {
                         StudyResearchSnapshot(
                             request = snapshot.request,
                             searchStageMetadata = snapshot.searchStageMetadata,
+                            fetchStageMetadata = snapshot.fetchStageMetadata,
                             searchResults = snapshot.searchResults,
                             selectedArticles = snapshot.selectedArticles,
                             materials = snapshot.materials,
@@ -294,8 +299,8 @@ object StudyResearchWorkflow {
             )
             edge(prepareQueries forwardTo searchWithLlmTools)
             edge(searchWithLlmTools forwardTo selectArticles)
-            edge(selectArticles forwardTo fetchArticles)
-            edge(fetchArticles forwardTo checkEvidence)
+            edge(selectArticles forwardTo fetchWithLlmTools)
+            edge(fetchWithLlmTools forwardTo checkEvidence)
             edge(checkEvidence forwardTo nodeFinish)
         }
 
@@ -307,6 +312,24 @@ object StudyResearchWorkflow {
         After all required search calls are complete, reply with exactly $SEARCH_STAGE_COMPLETE and nothing else.
         $SEARCH_STAGE_REQUEST_PREFIX${workflowJson.encodeToString(request)}
         """.trimIndent()
+
+    private fun buildFetchStagePrompt(snapshot: ResearchSelectionSnapshot): String {
+        val request =
+            FetchStageRequest(
+                request = snapshot.request,
+                searchStageMetadata = snapshot.searchStageMetadata,
+                searchResults = snapshot.searchResults,
+                selectedArticles = snapshot.selectedArticles,
+            )
+
+        return """
+            Fetch stage for the CyberWave learning workflow.
+            Use the available `fetch_wikipedia_article` tool exactly once for each unique article title in the request payload.
+            Use only titles from the payload. Do not search for new titles and do not skip any unique title in the payload.
+            After all required fetch calls are complete, reply with exactly $FETCH_STAGE_COMPLETE and nothing else.
+            $FETCH_STAGE_REQUEST_PREFIX${workflowJson.encodeToString(request)}
+            """.trimIndent()
+    }
 
     private fun buildSearchSnapshot(
         messages: List<Message>,
@@ -341,12 +364,63 @@ object StudyResearchWorkflow {
         )
     }
 
+    private fun buildFetchMaterialsSnapshot(
+        messages: List<Message>,
+        completionMessage: String,
+    ): ResearchMaterialsSnapshot {
+        val request = extractFetchStageRequest(messages)
+        val toolResults = extractFetchToolResults(messages)
+        val requestedTitlesByNormalizedTitle =
+            request.uniqueArticleTitles.associateBy { title -> title.trim().lowercase() }
+        val articlesByTitle = LinkedHashMap<String, org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticle>()
+
+        toolResults.forEach { article ->
+            val normalizedTitle = article.summary.title.trim().lowercase()
+            val requestedTitle = requestedTitlesByNormalizedTitle[normalizedTitle] ?: return@forEach
+            if (normalizedTitle !in articlesByTitle) {
+                articlesByTitle[requestedTitle.trim().lowercase()] = article
+            }
+        }
+
+        val materials =
+            request.selectedArticles.map { selection ->
+                TopicResearchMaterial(
+                    topic = selection.topic,
+                    articles =
+                        selection.articles
+                            .mapNotNull { article -> articlesByTitle[article.title.trim().lowercase()] }
+                            .distinctBy { article -> article.summary.pageId ?: article.summary.title.lowercase() },
+                )
+            }
+
+        return ResearchMaterialsSnapshot(
+            request = request.request,
+            searchStageMetadata = request.searchStageMetadata,
+            fetchStageMetadata =
+                FetchStageMetadata(
+                    toolCallCount = toolResults.size,
+                    completionMessage = completionMessage,
+                ),
+            searchResults = request.searchResults,
+            selectedArticles = request.selectedArticles,
+            materials = materials,
+        )
+    }
+
     private fun extractSearchToolResults(messages: List<Message>): List<SearchWikipediaTool.Result> =
         messages
             .filterIsInstance<Message.Tool.Result>()
             .filter { message -> message.tool == SearchWikipediaTool.NAME }
             .map { message ->
                 workflowJson.decodeFromString(SearchWikipediaTool.Result.serializer(), message.content)
+            }
+
+    private fun extractFetchToolResults(messages: List<Message>): List<org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticle> =
+        messages
+            .filterIsInstance<Message.Tool.Result>()
+            .filter { message -> message.tool == FetchWikipediaArticleTool.NAME }
+            .map { message ->
+                workflowJson.decodeFromString(org.jetbrains.koog.cyberwave.data.wikipedia.model.WikipediaArticle.serializer(), message.content)
             }
 
     private fun extractSearchStageRequest(messages: List<Message>): ValidatedStudyRequest {
@@ -366,6 +440,25 @@ object StudyResearchWorkflow {
                 ?: error("Search stage request payload is missing from the LLM prompt history.")
 
         return workflowJson.decodeFromString(ValidatedStudyRequest.serializer(), requestJson)
+    }
+
+    private fun extractFetchStageRequest(messages: List<Message>): FetchStageRequest {
+        val requestJson =
+            messages
+                .asReversed()
+                .asSequence()
+                .filterIsInstance<Message.User>()
+                .mapNotNull { message ->
+                    message.content
+                        .lineSequence()
+                        .firstOrNull { line -> line.startsWith(FETCH_STAGE_REQUEST_PREFIX) }
+                        ?.removePrefix(FETCH_STAGE_REQUEST_PREFIX)
+                        ?.trim()
+                        ?.takeIf(String::isNotEmpty)
+                }.firstOrNull()
+                ?: error("Fetch stage request payload is missing from the LLM prompt history.")
+
+        return workflowJson.decodeFromString(FetchStageRequest.serializer(), requestJson)
     }
 
     private sealed interface ValidationNodeResult {
@@ -398,8 +491,24 @@ object StudyResearchWorkflow {
     private data class ResearchMaterialsSnapshot(
         val request: ValidatedStudyRequest,
         val searchStageMetadata: SearchStageMetadata,
+        val fetchStageMetadata: FetchStageMetadata,
         val searchResults: List<TopicWikipediaSearchResults>,
         val selectedArticles: List<TopicWikipediaSelections>,
         val materials: List<TopicResearchMaterial>,
     )
+
+    @kotlinx.serialization.Serializable
+    private data class FetchStageRequest(
+        val request: ValidatedStudyRequest,
+        val searchStageMetadata: SearchStageMetadata,
+        val searchResults: List<TopicWikipediaSearchResults>,
+        val selectedArticles: List<TopicWikipediaSelections>,
+    ) {
+        val uniqueArticleTitles: List<String>
+            get() =
+                selectedArticles
+                    .flatMap { selection -> selection.articles }
+                    .map { article -> article.title }
+                    .distinctBy(String::lowercase)
+    }
 }

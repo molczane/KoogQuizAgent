@@ -16,6 +16,10 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.jetbrains.koog.cyberwave.agent.tool.FetchWikipediaArticleTool
 import org.jetbrains.koog.cyberwave.agent.tool.SearchWikipediaTool
 import org.jetbrains.koog.cyberwave.agent.workflow.StudyResearchWorkflow
 import org.jetbrains.koog.cyberwave.domain.model.ValidatedStudyRequest
@@ -68,7 +72,9 @@ object UnusedPromptExecutor : PromptExecutor {
 class ToolCallingSearchPromptExecutor(
     private val structuredResponseJson: String? = null,
     private val scriptedSearchTopics: List<String>? = null,
-    private val completionMessage: String = StudyResearchWorkflow.SEARCH_STAGE_COMPLETE,
+    private val scriptedFetchTitles: List<String>? = null,
+    private val searchCompletionMessage: String = StudyResearchWorkflow.SEARCH_STAGE_COMPLETE,
+    private val fetchCompletionMessage: String = StudyResearchWorkflow.FETCH_STAGE_COMPLETE,
 ) : PromptExecutor {
     var executeCalls: Int = 0
         private set
@@ -80,8 +86,13 @@ class ToolCallingSearchPromptExecutor(
         private set
 
     val emittedSearchToolTopics: MutableList<String> = mutableListOf()
+    val emittedFetchToolTitles: MutableList<String> = mutableListOf()
+    var fetchStageCalls: Int = 0
+        private set
     private var activeTopics: List<String>? = null
     private var nextTopicIndex: Int = 0
+    private var activeFetchTitles: List<String>? = null
+    private var nextFetchIndex: Int = 0
 
     override suspend fun execute(
         prompt: Prompt,
@@ -90,17 +101,26 @@ class ToolCallingSearchPromptExecutor(
     ): List<Message.Response> {
         executeCalls += 1
 
-        return if (tools.any { descriptor -> descriptor.name == SearchWikipediaTool.NAME }) {
-            searchStageCalls += 1
-            handleSearchStage(prompt)
-        } else {
-            structuredPayloadCalls += 1
-            listOf(
-                Message.Assistant(
-                    structuredResponseJson ?: error("A structured payload response must be configured for this executor."),
-                    ResponseMetaInfo.Empty,
-                ),
-            )
+        return when {
+            tools.any { descriptor -> descriptor.name == SearchWikipediaTool.NAME } -> {
+                searchStageCalls += 1
+                handleSearchStage(prompt)
+            }
+
+            tools.any { descriptor -> descriptor.name == FetchWikipediaArticleTool.NAME } -> {
+                fetchStageCalls += 1
+                handleFetchStage(prompt)
+            }
+
+            else -> {
+                structuredPayloadCalls += 1
+                listOf(
+                    Message.Assistant(
+                        structuredResponseJson ?: error("A structured payload response must be configured for this executor."),
+                        ResponseMetaInfo.Empty,
+                    ),
+                )
+            }
         }
     }
 
@@ -140,7 +160,34 @@ class ToolCallingSearchPromptExecutor(
         } else {
             activeTopics = null
             nextTopicIndex = 0
-            listOf(Message.Assistant(completionMessage, ResponseMetaInfo.Empty))
+            listOf(Message.Assistant(searchCompletionMessage, ResponseMetaInfo.Empty))
+        }
+    }
+
+    private fun handleFetchStage(prompt: Prompt): List<Message.Response> {
+        val requestedTitles = extractFetchStageTitles(prompt)
+        if (activeFetchTitles != requestedTitles) {
+            activeFetchTitles = requestedTitles
+            nextFetchIndex = 0
+        }
+
+        val fetchPlan = scriptedFetchTitles ?: requestedTitles
+        return if (nextFetchIndex < fetchPlan.size) {
+            val nextTitle = fetchPlan[nextFetchIndex]
+            nextFetchIndex += 1
+            emittedFetchToolTitles += nextTitle
+            listOf(
+                Message.Tool.Call(
+                    id = "fetch-${emittedFetchToolTitles.size}",
+                    tool = FetchWikipediaArticleTool.NAME,
+                    content = json.encodeToString(FetchWikipediaArticleTool.Args(title = nextTitle)),
+                    metaInfo = ResponseMetaInfo.Empty,
+                ),
+            )
+        } else {
+            activeFetchTitles = null
+            nextFetchIndex = 0
+            listOf(Message.Assistant(fetchCompletionMessage, ResponseMetaInfo.Empty))
         }
     }
 
@@ -161,6 +208,41 @@ class ToolCallingSearchPromptExecutor(
                 ?: error("Search stage request payload was not found in the prompt.")
 
         return json.decodeFromString(ValidatedStudyRequest.serializer(), payload)
+    }
+
+    private fun extractFetchStageTitles(prompt: Prompt): List<String> {
+        val payload =
+            prompt.messages
+                .asReversed()
+                .asSequence()
+                .filterIsInstance<Message.User>()
+                .mapNotNull { message ->
+                    message.content
+                        .lineSequence()
+                        .firstOrNull { line -> line.startsWith(StudyResearchWorkflow.FETCH_STAGE_REQUEST_PREFIX) }
+                        ?.removePrefix(StudyResearchWorkflow.FETCH_STAGE_REQUEST_PREFIX)
+                        ?.trim()
+                        ?.takeIf(String::isNotEmpty)
+                }.firstOrNull()
+                ?: error("Fetch stage request payload was not found in the prompt.")
+
+        val selectedArticles =
+            json.parseToJsonElement(payload)
+                .jsonObject
+                .getValue("selectedArticles")
+                .jsonArray
+
+        return buildList {
+            selectedArticles.forEach { selection ->
+                selection
+                    .jsonObject
+                    .getValue("articles")
+                    .jsonArray
+                    .forEach { article ->
+                        add(article.jsonObject.getValue("title").jsonPrimitive.content)
+                    }
+            }
+        }.distinctBy(String::lowercase)
     }
 
     private companion object {
