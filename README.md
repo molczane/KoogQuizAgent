@@ -5,9 +5,10 @@ CyberWave is a Kotlin Multiplatform workshop app that demonstrates how to build 
 * researches Wikipedia first
 * generates structured study notes
 * generates a single-choice quiz
+* lets you switch between OpenAI and a local Ollama model
 * runs from one shared codebase on Desktop JVM and Web WasmJS
 
-The app is intentionally set up for local workshop use. The current WasmJS mode uses a direct OpenAI key in the browser, which is acceptable only for local demos and testing. It is insecure for deployment and not a secure deployment model.
+The app is intentionally set up for local workshop use. The current WasmJS OpenAI mode uses a direct key in the browser, which is acceptable only for local demos and testing. It is insecure for deployment and not a secure deployment model.
 
 ## Workshop setup
 
@@ -16,7 +17,7 @@ Recommended local setup:
 * IntelliJ IDEA
 * Kotlin Multiplatform plugin enabled in IntelliJ
 * JDK 17 or newer available to Gradle
-* OpenAI API key for local testing
+* OpenAI API key for the OpenAI path, or a local Ollama installation for the Ollama path
 
 Project modules:
 
@@ -33,21 +34,22 @@ Project modules:
 
 ## Run Desktop JVM
 
-The desktop target reads the OpenAI key from the JVM environment.
+Run the Gradle configuration for the JVM target, typically `composeApp [jvm]`. After the app starts, use the provider toggle in the request form:
 
-### IntelliJ run configuration
+* `OpenAI` uses your local OpenAI key
+* `Ollama` uses `llama3.2` through the default local Ollama host at `http://localhost:11434`
 
-Use the Gradle run configuration for the JVM target, typically `composeApp [jvm]`.
+### OpenAI on JVM
 
-Set the environment variable in the IntelliJ run configuration:
+The desktop OpenAI path reads the key from the JVM environment.
+
+In IntelliJ, set this in the `composeApp [jvm]` run configuration:
 
 ```text
 OPENAI_API_KEY=your_openai_api_key
 ```
 
-Then run the JVM target from IntelliJ.
-
-### Terminal
+Or run from the terminal.
 
 On macOS/Linux:
 
@@ -62,17 +64,41 @@ $env:OPENAI_API_KEY="your_openai_api_key"
 .\gradlew.bat :composeApp:run
 ```
 
+### Ollama on JVM
+
+The desktop Ollama path does not use an API key.
+
+Before you generate a lesson with the `Ollama` toggle selected:
+
+1. Install and start Ollama locally.
+2. Pull the model locally:
+
+```shell
+ollama pull llama3.2
+```
+
+3. Keep Ollama running on its default local host:
+
+```text
+http://localhost:11434
+```
+
+The app expects that host and the local `llama3.2` model. If Ollama is not running, or the model is missing, generation will fail with a local-runtime error.
+
 ## Run Web WasmJS
 
-The browser target does not read IntelliJ or terminal environment variables at runtime. For WasmJS, the current local-only mode reads the OpenAI key from browser `localStorage`.
+Run the Gradle configuration for the web target, typically `composeApp [wasmJs]`. After the app starts in the browser, choose the provider in the form UI.
 
-### IntelliJ run configuration
+The browser target does not read IntelliJ or terminal environment variables at runtime.
 
-Use the Gradle run configuration for the web target, typically `composeApp [wasmJs]`.
+### OpenAI on WasmJS
 
-Start the dev server from IntelliJ. After the browser opens, configure `localStorage` once for `http://localhost:8080`.
+The WasmJS OpenAI path reads the key from browser `localStorage` in local-only direct mode.
 
-Open browser DevTools and run:
+Start the dev server from IntelliJ. After the browser opens, configure `localStorage` once for `http://localhost:8080`:
+
+1. Open browser DevTools.
+2. Run:
 
 ```js
 localStorage.setItem("cyberwave.openai.mode", "local_direct")
@@ -80,9 +106,32 @@ localStorage.setItem("cyberwave.openai.apiKey", "YOUR_OPENAI_API_KEY")
 location.reload()
 ```
 
-This tells the app to use the local direct browser mode and provides the key for the current browser profile.
+3. In the app UI, select `OpenAI`.
 
-### Terminal
+### Ollama on WasmJS
+
+The WasmJS Ollama path does not use a browser key. It calls your local Ollama host directly from the browser.
+
+Before you generate a lesson with the `Ollama` toggle selected:
+
+1. Install and start Ollama locally.
+2. Pull the model locally:
+
+```shell
+ollama pull llama3.2
+```
+
+3. Make sure Ollama is running at:
+
+```text
+http://localhost:11434
+```
+
+4. In the app UI, select `Ollama`.
+
+This is still local-only workshop mode. The browser must be able to reach your local Ollama host.
+
+### Start the WasmJS dev server from the terminal
 
 On macOS/Linux:
 
@@ -95,8 +144,6 @@ On Windows:
 ```shell
 .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
 ```
-
-Then configure the browser with the same `localStorage` commands shown above.
 
 ### Clear the browser setup
 
@@ -113,7 +160,8 @@ Important rules for the workshop:
 
 * never commit an OpenAI API key
 * do not hardcode the key in source files or resources
-* treat the current WasmJS direct-key mode as local-only
+* treat the current WasmJS direct-key OpenAI mode as local-only
+* local Ollama mode is for a machine where Ollama is already running
 * do not present the current WasmJS mode as production-secure
 
 More detail is in [SECURITY.md](./ai-docs/SECURITY.md).

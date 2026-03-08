@@ -51,6 +51,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import org.jetbrains.koog.cyberwave.application.StudyRequestConstraints
 import org.jetbrains.koog.cyberwave.domain.model.Difficulty
+import org.jetbrains.koog.cyberwave.domain.model.LocalLlmDefaults
+import org.jetbrains.koog.cyberwave.domain.model.LocalLlmProvider
 import org.jetbrains.koog.cyberwave.domain.model.QuestionType
 import org.jetbrains.koog.cyberwave.domain.model.QuizPayload
 import org.jetbrains.koog.cyberwave.domain.model.QuizQuestion
@@ -249,7 +251,7 @@ private fun HeroPanel(modifier: Modifier = Modifier) {
             ) {
                 InsightBadge(text = "Single-choice v1")
                 InsightBadge(text = "Desktop + Wasm")
-                InsightBadge(text = "Local direct OpenAI")
+                InsightBadge(text = "OpenAI + Ollama")
                 InsightBadge(text = "Source-backed summaries")
             }
         }
@@ -507,6 +509,7 @@ private fun QuizHero(
                     InsightBadge(text = topic)
                 }
                 InsightBadge(text = form.difficulty.label)
+                InsightBadge(text = form.provider.label)
                 InsightBadge(text = "${(totalQuestions - currentNumber).coerceAtLeast(0)} remaining")
             }
         }
@@ -866,6 +869,7 @@ private fun FailureScreen(
                             }
                         }
                         FailureActionPanel(
+                            form = form,
                             screenModel = screenModel,
                             onReturnToInput = onReturnToInput,
                             modifier = Modifier.weight(0.9f),
@@ -874,6 +878,7 @@ private fun FailureScreen(
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         FailureActionPanel(
+                            form = form,
                             screenModel = screenModel,
                             onReturnToInput = onReturnToInput,
                         )
@@ -966,6 +971,7 @@ private fun ResultsHero(
                             InsightBadge(text = "$scorePercent% score")
                             InsightBadge(text = "${results.answeredQuestions} answered")
                             InsightBadge(text = form.difficulty.label)
+                            InsightBadge(text = form.provider.label)
                         }
                     }
 
@@ -1328,6 +1334,7 @@ private fun FailureDetailsPanel(
 
 @Composable
 private fun FailureActionPanel(
+    form: StudyFormState,
     screenModel: StudyScreenModel,
     onReturnToInput: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1350,7 +1357,7 @@ private fun FailureActionPanel(
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             Text(
-                text = failureGuidance(screenModel),
+                text = failureGuidance(form = form, screenModel = screenModel),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
@@ -1428,6 +1435,7 @@ private fun SummaryHero(
                 InsightBadge(text = "${quiz.questions.size} questions")
                 InsightBadge(text = "${screenModel.sources.size} sources")
                 InsightBadge(text = form.difficulty.label)
+                InsightBadge(text = form.provider.label)
             }
         }
     }
@@ -1658,16 +1666,31 @@ private fun validationFieldLabel(field: String): String =
         else -> field
     }
 
-private fun failureGuidance(screenModel: StudyScreenModel): String =
+private fun failureGuidance(
+    form: StudyFormState,
+    screenModel: StudyScreenModel,
+): String =
     when (screenModel.state) {
         org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.INSUFFICIENT_SOURCES ->
             "Wikipedia evidence was too thin for the requested lesson. Narrow the topics or reduce the question count, then run generation again."
 
         org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.CONFIGURATION_ERROR ->
-            "The local OpenAI setup is incomplete. Return to the request screen after fixing the key or local direct mode configuration."
+            when (form.provider) {
+                LocalLlmProvider.OPENAI ->
+                    "The local OpenAI setup is incomplete. Return to the request screen after fixing the key or local direct mode configuration."
+
+                LocalLlmProvider.OLLAMA ->
+                    "The local Ollama runtime is not ready. Make sure Ollama is running at ${LocalLlmDefaults.OLLAMA_BASE_URL} and that ${LocalLlmDefaults.OLLAMA_MODEL_NAME} is available locally."
+            }
 
         org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.GENERATION_ERROR ->
-            "The local research or generation runtime failed before a stable payload was produced. Check network access and local AI configuration, then retry."
+            when (form.provider) {
+                LocalLlmProvider.OPENAI ->
+                    "The local research or generation runtime failed before a stable payload was produced. Check network access and your local OpenAI configuration, then retry."
+
+                LocalLlmProvider.OLLAMA ->
+                    "The local research or generation runtime failed before a stable payload was produced. Verify that Ollama is running at ${LocalLlmDefaults.OLLAMA_BASE_URL} and that ${LocalLlmDefaults.OLLAMA_MODEL_NAME} is ready locally, then retry."
+            }
 
         org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState.VALIDATION_ERROR ->
             "The request needs adjustment before generation can start. Review the flagged fields and submit again."
@@ -1682,12 +1705,12 @@ private fun ResearchingScreen(
     modifier: Modifier = Modifier,
 ) {
     val stages =
-        remember(form.maxQuestions, form.difficulty, topicCount) {
+        remember(form.maxQuestions, form.difficulty, topicCount, form.provider) {
             listOf(
                 "Validating $topicCount topic(s) and ${form.maxQuestions} requested question(s).",
                 "Searching Wikipedia and ranking likely article candidates.",
                 "Fetching article content and checking evidence coverage for ${form.difficulty.label}.",
-                "Asking Koog for the structured summary and quiz payload.",
+                providerGenerationStage(form.provider),
             )
         }
     var activeStage by remember(stages) { mutableIntStateOf(0) }
@@ -1823,7 +1846,7 @@ private fun ResearchingScreen(
                         strokeWidth = 3.dp,
                     )
                     Text(
-                        text = "If this stalls locally, check your network and local OpenAI key setup, then try again.",
+                        text = providerStallMessage(form.provider),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1980,6 +2003,27 @@ private fun FormPanel(
                 )
             }
 
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    text = "LLM provider",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    LocalLlmProvider.entries.forEach { provider ->
+                        FilterChip(
+                            selected = form.provider == provider,
+                            onClick = { onEvent(StudyUiEvent.ProviderChanged(provider)) },
+                            label = { Text(provider.label) },
+                        )
+                    }
+                }
+                ProviderSetupPanel(provider = form.provider)
+            }
+
             OutlinedTextField(
                 value = form.specificInstructions,
                 onValueChange = { onEvent(StudyUiEvent.SpecificInstructionsChanged(it)) },
@@ -2025,6 +2069,35 @@ private fun FormPanel(
             ) {
                 Text("Research and build quiz")
             }
+        }
+    }
+}
+
+@Composable
+private fun ProviderSetupPanel(
+    provider: LocalLlmProvider,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = providerSetupTitle(provider),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                text = providerSetupBody(provider),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
         }
     }
 }
@@ -2135,6 +2208,42 @@ private val Difficulty.supportingText: String
             Difficulty.HARD -> "Lean toward trade-offs, cause-and-effect, and less obvious distinctions."
         }
 
+private val LocalLlmProvider.label: String
+    get() =
+        when (this) {
+            LocalLlmProvider.OPENAI -> "OpenAI"
+            LocalLlmProvider.OLLAMA -> "Ollama"
+        }
+
+private fun providerSetupTitle(provider: LocalLlmProvider): String =
+    when (provider) {
+        LocalLlmProvider.OPENAI -> "Use ChatGPT with a local OpenAI key"
+        LocalLlmProvider.OLLAMA -> "Use a local Ollama model"
+    }
+
+private fun providerSetupBody(provider: LocalLlmProvider): String =
+    when (provider) {
+        LocalLlmProvider.OPENAI ->
+            "Desktop reads OPENAI_API_KEY from your shell or IDE. WasmJS reads the key from browser localStorage in local_direct mode."
+
+        LocalLlmProvider.OLLAMA ->
+            "The app calls ${LocalLlmDefaults.OLLAMA_MODEL_NAME} on ${LocalLlmDefaults.OLLAMA_BASE_URL}. Start Ollama locally and make sure the model is available before generating a lesson."
+    }
+
+private fun providerGenerationStage(provider: LocalLlmProvider): String =
+    when (provider) {
+        LocalLlmProvider.OPENAI -> "Asking Koog with OpenAI for the structured summary and quiz payload."
+        LocalLlmProvider.OLLAMA ->
+            "Asking Koog with local Ollama (${LocalLlmDefaults.OLLAMA_MODEL_NAME}) for the structured summary and quiz payload."
+    }
+
+private fun providerStallMessage(provider: LocalLlmProvider): String =
+    when (provider) {
+        LocalLlmProvider.OPENAI -> "If this stalls locally, check your network and local OpenAI key setup, then try again."
+        LocalLlmProvider.OLLAMA ->
+            "If this stalls locally, make sure Ollama is running at ${LocalLlmDefaults.OLLAMA_BASE_URL} and that ${LocalLlmDefaults.OLLAMA_MODEL_NAME} is ready, then try again."
+    }
+
 private fun snapshotText(form: StudyFormState): String {
     val topicCount =
         form.topicsText
@@ -2145,7 +2254,7 @@ private fun snapshotText(form: StudyFormState): String {
             .count()
 
     val instructionsState = if (form.specificInstructions.isBlank()) "No extra instructions" else "Custom emphasis provided"
-    return "${topicCount.coerceAtLeast(0)} topic(s), ${form.maxQuestions} question(s), ${form.difficulty.label}, $instructionsState."
+    return "${topicCount.coerceAtLeast(0)} topic(s), ${form.maxQuestions} question(s), ${form.difficulty.label}, ${form.provider.label}, $instructionsState."
 }
 
 @Preview

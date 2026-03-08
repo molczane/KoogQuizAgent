@@ -179,8 +179,9 @@ class StudySessionUseCaseTest {
 
         assertEquals(StudyGenerationState.GENERATION_ERROR, result.state)
         assertEquals("Generation interrupted", result.screenTitle)
-        assertTrue(result.error?.message?.contains(LocalLlmDefaults.OLLAMA_BASE_URL) == true)
-        assertTrue(result.error?.message?.contains(LocalLlmDefaults.OLLAMA_MODEL_NAME) == true)
+        val errorMessage = result.error?.message.orEmpty()
+        assertTrue(errorMessage.contains(LocalLlmDefaults.OLLAMA_BASE_URL))
+        assertTrue(errorMessage.contains(LocalLlmDefaults.OLLAMA_MODEL_NAME))
     }
 
     @Test
