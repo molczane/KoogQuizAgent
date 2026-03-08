@@ -82,6 +82,69 @@ class StudyResearchWorkflowTest {
     }
 
     @Test
+    fun strategyReturnsValidationFailureWithoutInvokingResearchTools() = runTest {
+        val wikipediaClient = RecordingWikipediaClient()
+        val strategy = StudyResearchWorkflow.strategy(wikipediaClient)
+        val agent =
+            AIAgent(
+                promptExecutor = UnusedPromptExecutor,
+                agentConfig = testAgentConfig(),
+                strategy = strategy,
+                toolRegistry = wikipediaToolRegistry(wikipediaClient),
+            )
+
+        val result =
+            agent.run(
+                StudyRequestInput(
+                    topicsText = "   ",
+                    maxQuestions = 3,
+                    difficulty = Difficulty.MEDIUM,
+                ),
+            )
+
+        val failure = assertIs<StudyResearchWorkflowResult.ValidationFailed>(result)
+
+        assertEquals(emptyList(), wikipediaClient.calls)
+        assertEquals(emptyList(), failure.normalizedTopics)
+        assertEquals(listOf("topicsText"), failure.issues.map { issue -> issue.field })
+    }
+
+    @Test
+    fun strategyReturnsInsufficientSourcesWhenEvidenceRemainsDisambiguationOnly() = runTest {
+        val wikipediaClient = RecordingWikipediaClient()
+        val strategy = StudyResearchWorkflow.strategy(wikipediaClient)
+        val agent =
+            AIAgent(
+                promptExecutor = UnusedPromptExecutor,
+                agentConfig = testAgentConfig(),
+                strategy = strategy,
+                toolRegistry = wikipediaToolRegistry(wikipediaClient),
+            )
+
+        val result =
+            agent.run(
+                StudyRequestInput(
+                    topicsText = "Mercury",
+                    maxQuestions = 2,
+                    difficulty = Difficulty.EASY,
+                ),
+            )
+
+        val insufficient = assertIs<StudyResearchWorkflowResult.InsufficientSources>(result)
+
+        assertEquals(
+            listOf(
+                "search:Mercury:5",
+                "article:Mercury (disambiguation)",
+            ),
+            wikipediaClient.calls,
+        )
+        assertEquals(EvidenceStatus.INSUFFICIENT, insufficient.snapshot.evidence.status)
+        assertEquals(listOf("Mercury"), insufficient.snapshot.evidence.missingTopics)
+        assertEquals(0, insufficient.snapshot.effectiveQuestionCount)
+    }
+
+    @Test
     fun strategyReusesFetchedArticleWhenMultipleTopicsResolveToTheSamePage() = runTest {
         val wikipediaClient = RecordingWikipediaClient()
         val strategy = StudyResearchWorkflow.strategy(wikipediaClient)
@@ -159,6 +222,17 @@ class StudyResearchWorkflowTest {
                         ),
                     )
 
+                "Mercury" ->
+                    listOf(
+                        WikipediaSearchResult(
+                            pageId = 4L,
+                            title = "Mercury (disambiguation)",
+                            snippet = "Mercury may refer to many different topics.",
+                            canonicalUrl = "https://en.wikipedia.org/wiki/Mercury_(disambiguation)",
+                            isDisambiguationHint = true,
+                        ),
+                    )
+
                 else -> emptyList()
             }
         }
@@ -211,6 +285,20 @@ class StudyResearchWorkflowTest {
                                 extract = "The Java Virtual Machine executes Java bytecode.",
                             ),
                         plainTextContent = longContent("Java Virtual Machine"),
+                    )
+
+                "Mercury (disambiguation)" ->
+                    WikipediaArticle(
+                        summary =
+                            WikipediaArticleSummary(
+                                pageId = 4L,
+                                title = "Mercury (disambiguation)",
+                                canonicalUrl = "https://en.wikipedia.org/wiki/Mercury_(disambiguation)",
+                                description = "Disambiguation page",
+                                extract = "Mercury may refer to multiple unrelated topics.",
+                                isDisambiguation = true,
+                            ),
+                        plainTextContent = longContent("Mercury"),
                     )
 
                 else -> error("Unexpected article title: $normalizedTitle")
