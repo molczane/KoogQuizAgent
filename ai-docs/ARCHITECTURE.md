@@ -148,10 +148,12 @@ Suggested meaning:
 1. UI collects `topicsText`, `maxQuestions`, `difficulty`, and optional `specificInstructions`.
 2. Shared application code parses and validates the form.
 3. Shared Koog strategy runs:
-   * search Wikipedia
-   * select articles
-   * fetch content
-   * generate structured summary and quiz
+   * validate and normalize deterministically
+   * run a search-stage subgraph where the LLM can call only search tools
+   * select articles deterministically
+   * run a fetch-stage subgraph where the LLM can call only fetch tools
+   * evaluate evidence deterministically
+   * generate the final structured summary and quiz
 4. LLM calls go through `PlatformOpenAiGateway` using a platform-provided `apiKey`.
 5. Wikipedia calls go directly to MediaWiki from the shared client implementation.
 6. Shared code returns a structured screen model.
@@ -207,12 +209,32 @@ Expected behavior:
 * default to a no-op implementation in shared code
 * allow local console tracing now and a future OpenTelemetry adapter later without changing workflow logic
 
+### Stage-scoped tool subgraphs
+
+Recommended workflow shape for the next agent refactor:
+
+* deterministic outer graph for validation, selection, evidence, and finish states
+* a search subgraph that exposes only `SearchWikipediaTool`
+* a fetch subgraph that exposes only article-fetch tools
+* a final structured-generation stage with no Wikipedia retrieval tools available
+
+Recommended Koog building blocks for this refactor:
+
+* `nodeLLMRequest` or `nodeLLMSendMessageOnlyCallingTools`
+* `nodeExecuteTool`
+* `nodeLLMSendToolResult`
+* `subgraph(..., tools = ...)` to limit tool access by stage
+
+This keeps the workflow inspectable while still demonstrating genuine model-driven tool use.
+
 ## Architectural constraints
 
 * Remove the plain `js` target if it is not used.
 * Use class-based Koog tools only.
 * Keep the final UI driven by structured models, never raw LLM text.
 * Treat `specificInstructions` as optional prompt guidance, not a way to override system rules.
-* Keep the agent workflow deterministic where possible.
+* Keep validation, article selection, and evidence sufficiency deterministic.
 * Prefer explicit nodes and transitions over large monolithic agent prompts.
+* Prefer stage-scoped tool access over one global unrestricted tool loop.
+* Do not expose Wikipedia retrieval tools to the final payload-generation stage.
 * Treat WasmJS direct-key support as local-only and non-production.

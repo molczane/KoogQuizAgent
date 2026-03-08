@@ -29,18 +29,34 @@ This workflow is intentionally narrow:
 
 Parsing of `topicsText` into `topics` is application logic, not LLM logic.
 
+## LLM participation model
+
+The target workflow is not a free-form ReAct loop across the whole app.
+
+Instead:
+
+* validation stays deterministic
+* topic normalization stays deterministic
+* article selection stays deterministic
+* evidence sufficiency stays deterministic
+* the LLM is used for:
+  * stage-limited tool calling during search
+  * stage-limited tool calling during fetch
+  * final structured payload generation
+
+The model should be able to call tools, but only inside the stage that is explicitly designed for that tool set.
+
 ## Mandatory workflow
 
 The workflow order is fixed:
 
 1. validate input
-2. search Wikipedia
-3. choose candidate articles
-4. fetch article content
+2. use a search-stage LLM node/subgraph to call search tools
+3. choose candidate articles deterministically
+4. use a fetch-stage LLM node/subgraph to call fetch tools
 5. evaluate evidence sufficiency
-6. synthesize summary cards
-7. generate quiz
-8. return structured response
+6. synthesize summary cards and quiz as structured output
+7. return structured response
 
 The workflow must not skip or reorder these steps.
 
@@ -50,12 +66,19 @@ Use Koog strategy graphs to enforce the workflow. A suitable v1 graph is:
 
 1. `validateInput`
 2. `prepareQueries`
-3. `searchWikipedia`
+3. `searchWithLlmTools`
 4. `selectArticles`
-5. `fetchArticles`
+5. `fetchWithLlmTools`
 6. `checkEvidence`
 7. `generateStructuredPayload`
 8. `finish`
+
+Recommended Koog graph mechanics for the tool-calling stages:
+
+* `subgraph(..., tools = ...)`
+* `nodeLLMRequest` or `nodeLLMSendMessageOnlyCallingTools`
+* `nodeExecuteTool`
+* `nodeLLMSendToolResult`
 
 ## Node responsibilities
 
@@ -77,13 +100,14 @@ Normalize topic strings:
 * remove empty items
 * deduplicate
 
-### `searchWikipedia`
+### `searchWithLlmTools`
 
-For each topic:
+This is the planned search-stage behavior after the refactor:
 
-* run one search query
-* consider top `3-5` results
-* keep source metadata
+* the LLM receives the prepared topics
+* it may call only the search tool(s) configured for that subgraph
+* it should call search once per topic unless a retry is explicitly justified by the prompt design
+* tool results are captured and converted back into deterministic workflow state
 
 ### `selectArticles`
 
@@ -95,11 +119,15 @@ Selection should be deterministic where possible:
 
 Avoid delegating basic ranking rules to the LLM if plain Kotlin can do it reliably.
 
-### `fetchArticles`
+### `fetchWithLlmTools`
 
-Fetch selected article summaries/content.
+This is the planned fetch-stage behavior after the refactor:
 
-This stage is a good candidate for controlled parallelism.
+* the LLM receives the selected article titles
+* it may call only the article fetch tool(s) configured for that subgraph
+* Kotlin still controls deduplication and downstream evidence checks
+
+This stage remains a good candidate for controlled parallelism later, but stage correctness matters more than parallelism for the first refactor.
 
 ### `checkEvidence`
 
@@ -113,6 +141,8 @@ Never hallucinate to fill gaps.
 ### `generateStructuredPayload`
 
 Use Koog structured output for the final payload.
+
+No Wikipedia retrieval tools should be available in this stage.
 
 The generated payload must include:
 
@@ -139,6 +169,12 @@ Tool descriptions must be explicit about:
 * what they do not do
 * likely failure conditions
 
+Tool access must be limited by stage:
+
+* search stage: search tool(s) only
+* fetch stage: fetch tool(s) only
+* final generation stage: no Wikipedia retrieval tools
+
 ## Prompting rules
 
 The system prompt for generation should state:
@@ -149,6 +185,13 @@ The system prompt for generation should state:
 * it must not exceed `maxQuestions`
 * it must attach source references to summaries and questions
 * it must respect the output schema exactly
+
+The system/task prompts for tool-calling stages should state:
+
+* which tool(s) are available in this stage
+* that the model must stay within the stage objective
+* that it must not invent tool results
+* when the stage should stop and hand control back to deterministic Kotlin logic
 
 `specificInstructions` should be appended as a low-priority customization field.
 
@@ -196,7 +239,7 @@ Do not add:
 * broad web search
 * MCP
 * multi-agent orchestration
-* free-form tool loops
+* one unrestricted tool loop that exposes every tool for the whole workflow
 * multiple quiz types
 * audience personas
 * persistent history or accounts
