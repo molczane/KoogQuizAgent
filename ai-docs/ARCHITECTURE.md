@@ -8,6 +8,7 @@ Build a clean, reviewable KMP application that:
 * uses Koog in shared KMP code
 * researches Wikipedia before generating content
 * runs the Koog agent directly on both platforms in local development
+* supports a local provider toggle between OpenAI and Ollama
 * renders the UI from structured data only
 
 ## Planned module layout
@@ -146,18 +147,22 @@ Suggested meaning:
 ## Request flow
 
 1. UI collects `topicsText`, `maxQuestions`, `difficulty`, and optional `specificInstructions`.
-2. Shared application code parses and validates the form.
-3. Shared Koog strategy runs:
+2. UI also collects the selected LLM provider: `OpenAI` or `Ollama`.
+3. Shared application code parses and validates the form.
+4. Shared runtime wiring resolves the selected local LLM backend:
+   * OpenAI with platform key lookup
+   * Ollama with default local host and fixed model
+5. Shared Koog strategy runs:
    * validate and normalize deterministically
    * run a search-stage subgraph where the LLM can call only search tools
    * select articles deterministically
    * run a fetch-stage subgraph where the LLM can call only fetch tools
    * evaluate evidence deterministically
    * generate the final structured summary and quiz
-4. LLM calls go through `PlatformOpenAiGateway` using a platform-provided `apiKey`.
-5. Wikipedia calls go directly to MediaWiki from the shared client implementation.
-6. Shared code returns a structured screen model.
-7. UI renders summary and exposes `Start the quiz`.
+6. LLM calls go through `PlatformLocalLlmGateway`.
+7. Wikipedia calls go directly to MediaWiki from the shared client implementation.
+8. Shared code returns a structured screen model.
+9. UI renders summary and exposes `Start the quiz`.
 
 ## Key abstractions
 
@@ -165,8 +170,19 @@ Suggested meaning:
 
 Required implementations:
 
-* `PlatformOpenAiGateway` for direct local execution on JVM and WasmJS
+* `PlatformLocalLlmGateway` for direct local execution on JVM and WasmJS
 * `ProxyLlmGateway` as an optional future secure mode
+
+Recommended provider model:
+
+* `LocalLlmProvider.OPENAI`
+* `LocalLlmProvider.OLLAMA`
+
+Recommended v1 Ollama runtime model:
+
+* `OllamaModels.Meta.LLAMA_3_2`
+* default local base URL only
+* no host-editing UI in the first slice
 
 ### `WikipediaClient`
 
@@ -198,6 +214,17 @@ Expected behavior:
 * WasmJS provider reads from a dev-only local source
 * no implementation should commit secrets to the repository
 
+### `LocalLlmRuntimeConfig`
+
+Recommended runtime abstraction for provider selection.
+
+Expected shape:
+
+* provider enum
+* OpenAI config path via `ApiKeyProvider`
+* Ollama config path via default local host + fixed model
+* no secret requirement for Ollama local mode
+
 ### `StudyWorkflowTracer`
 
 Shared observability abstraction for session, research, and payload-generation spans.
@@ -208,6 +235,7 @@ Expected behavior:
 * avoid prompts, article bodies, or API keys in trace attributes
 * default to a no-op implementation in shared code
 * allow local console tracing now and a future OpenTelemetry adapter later without changing workflow logic
+* include per-tool spans so local participants can see whether the LLM is actually calling tools
 
 ### Stage-scoped tool subgraphs
 
@@ -238,3 +266,4 @@ This keeps the workflow inspectable while still demonstrating genuine model-driv
 * Prefer stage-scoped tool access over one global unrestricted tool loop.
 * Do not expose Wikipedia retrieval tools to the final payload-generation stage.
 * Treat WasmJS direct-key support as local-only and non-production.
+* Treat local Ollama support as a workshop/development feature that requires a running local model.

@@ -1,6 +1,6 @@
 # Security
 
-## Core rule
+## Core rules
 
 The OpenAI API key must never be committed to the repository.
 
@@ -10,9 +10,11 @@ It must never be:
 * stored in shared resources
 * logged in plaintext
 
+The local Ollama option does not require an API key, but it still must be treated as a local-development capability, not a production deployment design.
+
 ## Active mode: local direct execution
 
-The current repository plan allows direct OpenAI access on both JVM and WasmJS for **local development only**.
+The current repository plan allows direct OpenAI access and local Ollama access on both JVM and WasmJS for **local development only**.
 
 This is acceptable only because the project is currently intended for local testing and multiplatform demo purposes.
 
@@ -31,6 +33,15 @@ That means:
 * the key must never be committed
 * the app must clearly be understood as local-only when using this mode
 
+WasmJS may also call a local Ollama instance in workshop mode.
+
+That means:
+
+* the browser can reach a locally running model endpoint
+* the app must clearly state that the local model must be running before generation
+* this is still not a production or public deployment security model
+* no remote Ollama host should be silently assumed in v1
+
 Recommended dev-only approaches:
 
 * manual runtime entry of the key
@@ -48,6 +59,13 @@ Desktop may use a direct OpenAI key in local development.
 Recommended approach:
 
 * read `OPENAI_API_KEY` from environment variables
+
+Desktop may also use a local Ollama model.
+
+Recommended approach:
+
+* use the default local Ollama host
+* require participants to start the model explicitly before running the app
 
 ## Wikipedia access
 
@@ -89,10 +107,12 @@ Prefer logging:
 
 * request IDs
 * timing
+* selected provider
 * topic count
 * selected model
 * number of sources
 * number of generated questions
+* tool call counts and safe tool arguments like topic/title
 
 ## Failure handling
 

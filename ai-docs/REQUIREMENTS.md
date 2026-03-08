@@ -28,18 +28,22 @@ For **v1**, these decisions are frozen:
 * **Structured JSON output only**
 * **Single-choice only**
 * **Form-based input**, not free-form prompt parsing
-* **Local direct OpenAI mode** on both JVM and WasmJS for development/testing
+* **Local direct provider toggle** between OpenAI and Ollama for development/testing
 
 ## Execution mode
 
 The active implementation mode for this repository is:
 
-* **`localDirect`** — the Koog agent runs directly on Desktop JVM and WasmJS using `simpleOpenAIExecutor(apiKey)`
+* **`localDirect`** — the Koog agent runs directly on Desktop JVM and WasmJS using either:
+  * `simpleOpenAIExecutor(apiKey)` for OpenAI
+  * `simpleOllamaAIExecutor(baseUrl)` for Ollama
 
 In this mode:
 
 * the shared workflow is the same on both platforms
-* the `apiKey` is obtained differently per platform
+* the selected provider is chosen explicitly by the user in the input UI
+* OpenAI configuration is obtained differently per platform
+* Ollama uses the default local base URL unless future requirements add an override
 * the WasmJS setup is acceptable for **local development only**
 * this mode is **not** a secure deployment model for the web
 
@@ -92,17 +96,27 @@ The shared flow should combine:
 
 Define an `LlmGateway` abstraction with two implementations:
 
-* `PlatformOpenAiGateway` — default, used by both JVM and WasmJS in `localDirect` mode
+* `PlatformLocalLlmGateway` — default, used by both JVM and WasmJS in `localDirect` mode
 * `ProxyLlmGateway` — optional future implementation for `secureProxy` mode
 
-`PlatformOpenAiGateway` should wrap `simpleOpenAIExecutor(apiKey)`.
+`PlatformLocalLlmGateway` should support both:
 
-The `apiKey` must be provided differently per platform:
+* OpenAI via `simpleOpenAIExecutor(apiKey)`
+* Ollama via `simpleOllamaAIExecutor(baseUrl)`
+
+OpenAI configuration must be provided differently per platform:
 
 * JVM: typically from `OPENAI_API_KEY`
 * WasmJS: from a dev-only local source, such as runtime entry or ignored local config
 
-For this workshop starter, `PlatformOpenAiGateway` is the default everywhere because the goal is to demonstrate Koog running directly on both platforms. If a secure web mode is added later, the `:server` module should use **Ktor**. ([OpenAI Platform][2])
+Ollama configuration for v1 should be:
+
+* model fixed to `OllamaModels.Meta.LLAMA_3_2`
+* base URL fixed to the default local Ollama address
+* no user-editable host field in the first implementation slice
+* clear UX copy that the model must already be running locally
+
+For this workshop starter, `PlatformLocalLlmGateway` is the default everywhere because the goal is to demonstrate Koog running directly on both platforms and switching local providers in the same app. If a secure web mode is added later, the `:server` module should use **Ktor**. ([OpenAI Platform][2])
 
 ### 5. Wikipedia access
 
@@ -126,6 +140,7 @@ The user-facing form must contain:
 * `maxQuestions: Int`
 * `difficulty: Easy | Medium | Hard`
 * `specificInstructions: String?`
+* `provider: OpenAI | Ollama`
 
 `topicsText` is parsed by application code into `topics: List<String>` before the core workflow starts.
 
@@ -137,6 +152,7 @@ The agent receives:
 * `maxQuestions: Int`
 * `difficulty: Easy | Medium | Hard`
 * `specificInstructions: String?`
+* `provider: OpenAI | Ollama`
 
 ### Mandatory workflow
 
@@ -219,7 +235,10 @@ The input screen must include:
 * number-of-questions input
 * difficulty selector
 * optional specific-instructions text input
+* provider selector for `OpenAI` vs `Ollama`
 * primary action to start generation
+
+When `Ollama` is selected, the UI must explicitly state that the selected model must already be running locally.
 
 ### Supported UI sections
 
@@ -332,6 +351,7 @@ Success is defined as follows:
 6. Every question includes at least one source reference.
 7. The repository never commits an OpenAI API key.
 8. The WasmJS direct-key mode is clearly documented as **local-only / insecure for deployment**. ([OpenAI Platform][2])
+9. The Ollama option is clearly documented as a **local runtime dependency** that requires a running local model before generation starts.
 9. The shared code uses multiplatform-safe tools, not JVM-only annotation tooling. ([Koog][6])
 
 ## Strongest recommendation
