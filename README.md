@@ -71,10 +71,10 @@ The desktop Ollama path does not use an API key.
 Before you generate a lesson with the `Ollama` toggle selected:
 
 1. Install and start Ollama locally.
-2. Pull the model locally:
+2. Run the model locally at least once:
 
 ```shell
-ollama pull llama3.2
+ollama run llama3.2
 ```
 
 3. Keep Ollama running on its default local host:
@@ -115,10 +115,10 @@ The WasmJS Ollama path does not use a browser key. It calls your local Ollama ho
 Before you generate a lesson with the `Ollama` toggle selected:
 
 1. Install and start Ollama locally.
-2. Pull the model locally:
+2. Run the model locally at least once:
 
 ```shell
-ollama pull llama3.2
+ollama run llama3.2
 ```
 
 3. Make sure Ollama is running at:
