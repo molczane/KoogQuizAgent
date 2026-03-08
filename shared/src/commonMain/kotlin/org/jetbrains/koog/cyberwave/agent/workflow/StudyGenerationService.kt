@@ -9,6 +9,9 @@ import org.jetbrains.koog.cyberwave.agent.tool.wikipediaToolRegistry
 import org.jetbrains.koog.cyberwave.data.wikipedia.WikipediaClient
 import org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState
 import org.jetbrains.koog.cyberwave.domain.model.StudyRequestInput
+import org.jetbrains.koog.cyberwave.observability.NoOpStudyWorkflowTracer
+import org.jetbrains.koog.cyberwave.observability.StudyWorkflowTracer
+import org.jetbrains.koog.cyberwave.observability.traceSpan
 import org.jetbrains.koog.cyberwave.presentation.model.PrimaryAction
 import org.jetbrains.koog.cyberwave.presentation.model.PrimaryActionId
 import org.jetbrains.koog.cyberwave.presentation.model.StudyScreenError
@@ -18,42 +21,89 @@ class StudyGenerationService(
     private val promptExecutor: PromptExecutor,
     private val llmModel: LLModel,
     wikipediaClient: WikipediaClient,
+    private val tracer: StudyWorkflowTracer = NoOpStudyWorkflowTracer,
 ) {
-    private val researchStrategy = StudyResearchWorkflow.strategy(wikipediaClient)
+    private val researchStrategy = StudyResearchWorkflow.strategy(wikipediaClient, tracer)
     private val toolRegistry = wikipediaToolRegistry(wikipediaClient)
-    private val payloadGenerator = StructuredStudyPayloadGenerator(promptExecutor = promptExecutor, llmModel = llmModel)
+    private val payloadGenerator =
+        StructuredStudyPayloadGenerator(
+            promptExecutor = promptExecutor,
+            llmModel = llmModel,
+            tracer = tracer,
+        )
 
-    suspend fun generate(input: StudyRequestInput): StudyScreenModel {
-        val researchResult = runResearchWorkflow(input)
+    suspend fun generate(input: StudyRequestInput): StudyScreenModel =
+        tracer.traceSpan(
+            name = "study_generation.service.generate",
+            attributes =
+                mapOf(
+                    "requested_question_count" to input.maxQuestions.toString(),
+                ),
+            successAttributes = { result ->
+                mapOf(
+                    "result_state" to result.state.name.lowercase(),
+                    "result_topic_count" to result.topics.size.toString(),
+                )
+            },
+        ) {
+            val researchResult = runResearchWorkflow(input)
 
-        return when (researchResult) {
-            is StudyResearchWorkflowResult.ReadyForGeneration -> payloadGenerator.generate(researchResult.snapshot)
-            is StudyResearchWorkflowResult.ValidationFailed -> validationErrorModel(researchResult)
-            is StudyResearchWorkflowResult.InsufficientSources -> insufficientSourcesModel(researchResult.snapshot)
+            when (researchResult) {
+                is StudyResearchWorkflowResult.ReadyForGeneration -> payloadGenerator.generate(researchResult.snapshot)
+                is StudyResearchWorkflowResult.ValidationFailed -> validationErrorModel(researchResult)
+                is StudyResearchWorkflowResult.InsufficientSources -> insufficientSourcesModel(researchResult.snapshot)
+            }
         }
-    }
 
-    private suspend fun runResearchWorkflow(input: StudyRequestInput): StudyResearchWorkflowResult {
-        val agent =
-            AIAgent(
-                promptExecutor = promptExecutor,
-                agentConfig =
-                    AIAgentConfig.withSystemPrompt(
-                        prompt = RESEARCH_SYSTEM_PROMPT,
-                        llm = llmModel,
-                        id = "study-research-workflow",
-                        maxAgentIterations = RESEARCH_MAX_ITERATIONS,
-                    ),
-                strategy = researchStrategy,
-                toolRegistry = toolRegistry,
-            )
+    private suspend fun runResearchWorkflow(input: StudyRequestInput): StudyResearchWorkflowResult =
+        tracer.traceSpan(
+            name = "study_generation.service.run_research_workflow",
+            attributes =
+                mapOf(
+                    "requested_question_count" to input.maxQuestions.toString(),
+                ),
+            successAttributes = { result ->
+                when (result) {
+                    is StudyResearchWorkflowResult.ReadyForGeneration ->
+                        mapOf(
+                            "workflow_outcome" to "ready_for_generation",
+                            "usable_source_count" to result.snapshot.usableSources.size.toString(),
+                        )
 
-        return try {
-            agent.run(input)
-        } finally {
-            agent.close()
+                    is StudyResearchWorkflowResult.InsufficientSources ->
+                        mapOf(
+                            "workflow_outcome" to "insufficient_sources",
+                            "usable_source_count" to result.snapshot.usableSources.size.toString(),
+                        )
+
+                    is StudyResearchWorkflowResult.ValidationFailed ->
+                        mapOf(
+                            "workflow_outcome" to "validation_failed",
+                            "issue_count" to result.issues.size.toString(),
+                        )
+                }
+            },
+        ) {
+            val agent =
+                AIAgent(
+                    promptExecutor = promptExecutor,
+                    agentConfig =
+                        AIAgentConfig.withSystemPrompt(
+                            prompt = RESEARCH_SYSTEM_PROMPT,
+                            llm = llmModel,
+                            id = "study-research-workflow",
+                            maxAgentIterations = RESEARCH_MAX_ITERATIONS,
+                        ),
+                    strategy = researchStrategy,
+                    toolRegistry = toolRegistry,
+                )
+
+            try {
+                agent.run(input)
+            } finally {
+                agent.close()
+            }
         }
-    }
 
     private fun validationErrorModel(
         result: StudyResearchWorkflowResult.ValidationFailed,

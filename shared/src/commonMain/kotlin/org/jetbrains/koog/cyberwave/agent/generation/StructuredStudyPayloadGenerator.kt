@@ -11,6 +11,9 @@ import org.jetbrains.koog.cyberwave.domain.model.QuizQuestion
 import org.jetbrains.koog.cyberwave.domain.model.ResearchSource
 import org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState
 import org.jetbrains.koog.cyberwave.domain.model.SummaryCard
+import org.jetbrains.koog.cyberwave.observability.NoOpStudyWorkflowTracer
+import org.jetbrains.koog.cyberwave.observability.StudyWorkflowTracer
+import org.jetbrains.koog.cyberwave.observability.traceSpan
 import org.jetbrains.koog.cyberwave.presentation.model.PrimaryAction
 import org.jetbrains.koog.cyberwave.presentation.model.PrimaryActionId
 import org.jetbrains.koog.cyberwave.presentation.model.StudyScreenModel
@@ -18,25 +21,42 @@ import org.jetbrains.koog.cyberwave.presentation.model.StudyScreenModel
 class StructuredStudyPayloadGenerator(
     private val promptExecutor: PromptExecutor,
     private val llmModel: LLModel,
+    private val tracer: StudyWorkflowTracer = NoOpStudyWorkflowTracer,
 ) {
-    suspend fun generate(snapshot: StudyResearchSnapshot): StudyScreenModel {
-        require(snapshot.effectiveQuestionCount > 0) {
-            "At least one supported question is required before generating a study payload."
-        }
-
-        val structuredResponse =
-            promptExecutor.executeStructured<StudyScreenModel>(
-                prompt = buildPrompt(snapshot),
-                model = llmModel,
-            ).getOrElse { error ->
-                throw IllegalStateException("Failed to generate a structured study payload.", error)
+    suspend fun generate(snapshot: StudyResearchSnapshot): StudyScreenModel =
+        tracer.traceSpan(
+            name = "study_generation.payload.generate",
+            attributes =
+                mapOf(
+                    "topic_count" to snapshot.request.topics.size.toString(),
+                    "supported_question_count" to snapshot.effectiveQuestionCount.toString(),
+                    "usable_source_count" to snapshot.usableSources.size.toString(),
+                    "has_specific_instructions" to (snapshot.request.specificInstructions != null).toString(),
+                ),
+            successAttributes = { model ->
+                mapOf(
+                    "summary_card_count" to model.summaryCards.size.toString(),
+                    "question_count" to model.quiz?.questions.orEmpty().size.toString(),
+                )
+            },
+        ) {
+            require(snapshot.effectiveQuestionCount > 0) {
+                "At least one supported question is required before generating a study payload."
             }
 
-        return finalizeModel(
-            rawModel = structuredResponse.data,
-            snapshot = snapshot,
-        )
-    }
+            val structuredResponse =
+                promptExecutor.executeStructured<StudyScreenModel>(
+                    prompt = buildPrompt(snapshot),
+                    model = llmModel,
+                ).getOrElse { error ->
+                    throw IllegalStateException("Failed to generate a structured study payload.", error)
+                }
+
+            finalizeModel(
+                rawModel = structuredResponse.data,
+                snapshot = snapshot,
+            )
+        }
 
     private fun buildPrompt(snapshot: StudyResearchSnapshot): Prompt =
         prompt(PROMPT_ID) {

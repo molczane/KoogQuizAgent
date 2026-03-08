@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -34,12 +35,15 @@ import org.jetbrains.koog.cyberwave.domain.model.QuizQuestion
 import org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState
 import org.jetbrains.koog.cyberwave.domain.model.StudyRequestInput
 import org.jetbrains.koog.cyberwave.domain.model.SummaryCard
+import org.jetbrains.koog.cyberwave.observability.RecordingStudyWorkflowTracer
+import org.jetbrains.koog.cyberwave.observability.StudyWorkflowTraceStatus
 import org.jetbrains.koog.cyberwave.presentation.model.PrimaryActionId
 import org.jetbrains.koog.cyberwave.presentation.model.StudyScreenModel
 
 class StudySessionUseCaseTest {
     @Test
     fun `generate returns configuration error when api key is missing`() = runTest {
+        val tracer = RecordingStudyWorkflowTracer()
         val useCase =
             StudySessionUseCase(
                 wikipediaClient = ReadyWikipediaClient(),
@@ -53,6 +57,7 @@ class StudySessionUseCaseTest {
                             ),
                         ),
                     ),
+                tracer = tracer,
             )
 
         val result =
@@ -69,6 +74,18 @@ class StudySessionUseCaseTest {
         assertEquals(listOf("Kotlin", "Compose"), result.topics)
         assertEquals(PrimaryActionId.RETRY, result.primaryAction?.id)
         assertEquals("OpenAI API key is missing", result.error?.title)
+        assertEquals(
+            listOf(
+                "study_session.generate:${StudyWorkflowTraceStatus.STARTED}",
+                "study_session.openai_gateway.open:${StudyWorkflowTraceStatus.STARTED}",
+                "study_session.openai_gateway.open:${StudyWorkflowTraceStatus.SUCCEEDED}",
+                "study_session.generate:${StudyWorkflowTraceStatus.SUCCEEDED}",
+            ),
+            tracer.events.map { event -> "${event.spanName}:${event.status}" },
+        )
+        assertEquals("configuration_error", tracer.events[2].attributes["gateway_outcome"])
+        assertEquals("missing_api_key", tracer.events[2].attributes["configuration_kind"])
+        assertEquals("configuration_error", tracer.events.last().attributes["result_state"])
     }
 
     @Test
@@ -131,6 +148,7 @@ class StudySessionUseCaseTest {
 
     @Test
     fun `generate returns generation error when research fails unexpectedly`() = runTest {
+        val tracer = RecordingStudyWorkflowTracer()
         val useCase =
             StudySessionUseCase(
                 wikipediaClient = FailingWikipediaClient(),
@@ -140,6 +158,7 @@ class StudySessionUseCaseTest {
                         llmModel = testLLModel,
                         promptExecutorFactory = { ClosablePromptExecutor(responseJson = readyPayloadJson()) },
                     ),
+                tracer = tracer,
             )
 
         val result =
@@ -155,6 +174,11 @@ class StudySessionUseCaseTest {
         assertEquals("Generation interrupted", result.screenTitle)
         assertEquals("Unable to build the study session", result.error?.title)
         assertTrue(result.error?.message?.contains("offline for test") == true)
+        assertContains(
+            tracer.events.map { event -> "${event.spanName}:${event.status}" },
+            "study_generation.service.generate:${StudyWorkflowTraceStatus.FAILED}",
+        )
+        assertEquals("generation_error", tracer.events.last().attributes["result_state"])
     }
 
     @Test

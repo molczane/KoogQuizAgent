@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import org.jetbrains.koog.cyberwave.agent.support.testLLModel
 import org.jetbrains.koog.cyberwave.data.wikipedia.WikipediaClient
@@ -28,6 +29,8 @@ import org.jetbrains.koog.cyberwave.domain.model.QuizQuestion
 import org.jetbrains.koog.cyberwave.domain.model.StudyGenerationState
 import org.jetbrains.koog.cyberwave.domain.model.StudyRequestInput
 import org.jetbrains.koog.cyberwave.domain.model.SummaryCard
+import org.jetbrains.koog.cyberwave.observability.RecordingStudyWorkflowTracer
+import org.jetbrains.koog.cyberwave.observability.StudyWorkflowTraceStatus
 import org.jetbrains.koog.cyberwave.presentation.model.PrimaryActionId
 import org.jetbrains.koog.cyberwave.presentation.model.StudyScreenModel
 
@@ -87,11 +90,13 @@ class StudyGenerationServiceTest {
     @Test
     fun generateUsesStructuredPayloadGenerationForReadySnapshots() = runTest {
         val promptExecutor = RecordingPromptExecutor(responseJson = validReadyPayloadJson())
+        val tracer = RecordingStudyWorkflowTracer()
         val service =
             StudyGenerationService(
                 promptExecutor = promptExecutor,
                 llmModel = testLLModel,
                 wikipediaClient = ReadyWikipediaClient(),
+                tracer = tracer,
             )
 
         val result =
@@ -107,6 +112,57 @@ class StudyGenerationServiceTest {
         assertEquals("Ready Kotlin quiz", result.screenTitle)
         assertEquals(PrimaryActionId.START_QUIZ, result.primaryAction?.id)
         assertEquals(1, promptExecutor.executeCalls)
+        assertContains(
+            tracer.events.map { event -> "${event.spanName}:${event.status}" },
+            "study_generation.payload.generate:${StudyWorkflowTraceStatus.SUCCEEDED}",
+        )
+        assertEquals(
+            listOf(
+                "study_generation.research.validate_input",
+                "study_generation.research.prepare_queries",
+                "study_generation.research.search_wikipedia",
+                "study_generation.research.select_articles",
+                "study_generation.research.fetch_articles",
+                "study_generation.research.check_evidence",
+            ),
+            tracer.events
+                .filter { event -> event.status == StudyWorkflowTraceStatus.SUCCEEDED && event.spanName.startsWith("study_generation.research.") }
+                .map { event -> event.spanName },
+        )
+    }
+
+    @Test
+    fun generateEmitsFailedTraceWhenPayloadGenerationBreaksSchemaExpectations() = runTest {
+        val promptExecutor = RecordingPromptExecutor(responseJson = invalidReadyPayloadJson())
+        val tracer = RecordingStudyWorkflowTracer()
+        val service =
+            StudyGenerationService(
+                promptExecutor = promptExecutor,
+                llmModel = testLLModel,
+                wikipediaClient = ReadyWikipediaClient(),
+                tracer = tracer,
+            )
+
+        val error =
+            assertFailsWith<IllegalStateException> {
+                service.generate(
+                    StudyRequestInput(
+                        topicsText = "Kotlin",
+                        maxQuestions = 2,
+                        difficulty = Difficulty.HARD,
+                    ),
+                )
+            }
+
+        assertContains(error.message.orEmpty(), "at least one valid quiz question")
+        assertContains(
+            tracer.events.map { event -> "${event.spanName}:${event.status}" },
+            "study_generation.payload.generate:${StudyWorkflowTraceStatus.FAILED}",
+        )
+        assertContains(
+            tracer.events.map { event -> "${event.spanName}:${event.status}" },
+            "study_generation.service.generate:${StudyWorkflowTraceStatus.FAILED}",
+        )
     }
 
     private class ReadyWikipediaClient : WikipediaClient {
@@ -234,6 +290,40 @@ class StudyGenerationServiceTest {
                                         options = listOf("A programming language", "A database", "A browser"),
                                         correctOptionIndex = 0,
                                         explanation = "Kotlin is a programming language.",
+                                        sourceRefs = listOf("wiki-1"),
+                                    ),
+                                ),
+                        ),
+                    state = StudyGenerationState.READY,
+                ),
+            )
+
+        private fun invalidReadyPayloadJson(): String =
+            Json.encodeToString(
+                StudyScreenModel.serializer(),
+                StudyScreenModel(
+                    screenTitle = "Broken Kotlin quiz",
+                    topics = listOf("Kotlin"),
+                    summaryCards =
+                        listOf(
+                            SummaryCard(
+                                title = "Kotlin overview",
+                                bullets = listOf("Kotlin is a language."),
+                                sourceRefs = listOf("wiki-1"),
+                            ),
+                        ),
+                    quiz =
+                        QuizPayload(
+                            maxQuestions = 2,
+                            questions =
+                                listOf(
+                                    QuizQuestion(
+                                        id = "q1",
+                                        type = QuestionType.SINGLE_CHOICE,
+                                        prompt = "Broken question",
+                                        options = listOf("Only one option"),
+                                        correctOptionIndex = 0,
+                                        explanation = "Invalid because only one option remains.",
                                         sourceRefs = listOf("wiki-1"),
                                     ),
                                 ),

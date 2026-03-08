@@ -196,6 +196,17 @@ Expected behavior:
 * WasmJS provider reads from a dev-only local source
 * no implementation should commit secrets to the repository
 
+### `StudyWorkflowTracer`
+
+Shared observability abstraction for session, research, and payload-generation spans.
+
+Expected behavior:
+
+* emit only safe metadata such as stage names, counts, outcomes, and durations
+* avoid prompts, article bodies, or API keys in trace attributes
+* default to a no-op implementation in shared code
+* allow local console tracing now and a future OpenTelemetry adapter later without changing workflow logic
+
 ## Architectural constraints
 
 * Remove the plain `js` target if it is not used.
