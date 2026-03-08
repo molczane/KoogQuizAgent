@@ -101,6 +101,7 @@ object StudyUiStateReducer {
 
             StudyGenerationState.INSUFFICIENT_SOURCES,
             StudyGenerationState.CONFIGURATION_ERROR,
+            StudyGenerationState.GENERATION_ERROR,
             StudyGenerationState.VALIDATION_ERROR,
             ->
                 StudyUiState.Failure(

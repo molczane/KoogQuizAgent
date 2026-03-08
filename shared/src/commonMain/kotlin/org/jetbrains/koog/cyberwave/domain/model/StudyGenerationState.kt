@@ -14,6 +14,9 @@ enum class StudyGenerationState {
     @SerialName("configuration_error")
     CONFIGURATION_ERROR,
 
+    @SerialName("generation_error")
+    GENERATION_ERROR,
+
     @SerialName("validation_error")
     VALIDATION_ERROR,
 }

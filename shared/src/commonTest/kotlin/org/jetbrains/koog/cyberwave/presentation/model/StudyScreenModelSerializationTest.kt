@@ -74,4 +74,18 @@ class StudyScreenModelSerializationTest {
 
         assertTrue(serialized.contains("\"configuration_error\""))
     }
+
+    @Test
+    fun serializesGenerationErrorStateValue() {
+        val payload =
+            StudyScreenModel(
+                screenTitle = "Generation interrupted",
+                topics = listOf("Kotlin"),
+                state = StudyGenerationState.GENERATION_ERROR,
+            )
+
+        val serialized = json.encodeToString(StudyScreenModel.serializer(), payload)
+
+        assertTrue(serialized.contains("\"generation_error\""))
+    }
 }

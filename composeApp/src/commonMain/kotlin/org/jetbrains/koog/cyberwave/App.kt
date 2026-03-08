@@ -7,13 +7,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
 import org.jetbrains.koog.cyberwave.ui.CyberWaveTheme
 import org.jetbrains.koog.cyberwave.ui.StudyAppScreen
 import org.jetbrains.koog.cyberwave.ui.rememberStudyAppState
 
 @Composable
-@Preview
 fun App() {
     CyberWaveTheme {
         val appState = rememberStudyAppState()

@@ -176,7 +176,10 @@ The agent must return a structured model that supports these UI states:
 * quiz_in_progress
 * quiz_complete
 * insufficient_sources
+* generation_error
 * validation_error
+
+`generation_error` is reserved for application-level fallback handling when the local research or generation runtime fails before the agent can produce a valid payload.
 
 The `ready` state must include:
 

@@ -1,5 +1,6 @@
 package org.jetbrains.koog.cyberwave.application
 
+import kotlinx.coroutines.CancellationException
 import org.jetbrains.koog.cyberwave.agent.workflow.StudyGenerationService
 import org.jetbrains.koog.cyberwave.data.openai.OpenAiConfigurationError
 import org.jetbrains.koog.cyberwave.data.openai.OpenAiConfigurationErrorKind
@@ -26,6 +27,13 @@ class StudySessionUseCase(
                         llmModel = gatewayResult.llmModel,
                         wikipediaClient = wikipediaClient,
                     ).generate(input)
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Throwable) {
+                    generationErrorModel(
+                        input = input,
+                        cause = exception,
+                    )
                 } finally {
                     gatewayResult.promptExecutor.close()
                 }
@@ -36,6 +44,22 @@ class StudySessionUseCase(
                     error = gatewayResult.error,
                 )
         }
+
+    private fun generationErrorModel(
+        input: StudyRequestInput,
+        cause: Throwable,
+    ): StudyScreenModel =
+        StudyScreenModel(
+            screenTitle = GENERATION_SCREEN_TITLE,
+            topics = StudyRequestParser.parseTopics(input.topicsText),
+            state = StudyGenerationState.GENERATION_ERROR,
+            primaryAction = PrimaryAction(id = PrimaryActionId.RETRY, label = RETRY_LABEL),
+            error =
+                StudyScreenError(
+                    title = GENERATION_ERROR_TITLE,
+                    message = generationErrorMessage(cause),
+                ),
+        )
 
     private fun configurationErrorModel(
         input: StudyRequestInput,
@@ -59,7 +83,18 @@ class StudySessionUseCase(
             OpenAiConfigurationErrorKind.INVALID_MODE -> "Local direct mode required"
         }
 
+    private fun generationErrorMessage(cause: Throwable): String {
+        val reason = cause.message?.trim().orEmpty()
+        return if (reason.isEmpty()) {
+            "The local research or generation flow failed before a study payload could be produced. Check your network and OpenAI setup, then try again."
+        } else {
+            "The local research or generation flow failed before a study payload could be produced. Reason: $reason"
+        }
+    }
+
     private companion object {
+        private const val GENERATION_SCREEN_TITLE: String = "Generation interrupted"
+        private const val GENERATION_ERROR_TITLE: String = "Unable to build the study session"
         private const val RETRY_LABEL: String = "Retry"
     }
 }

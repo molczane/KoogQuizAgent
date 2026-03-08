@@ -103,6 +103,34 @@ class StudySessionUseCaseTest {
     }
 
     @Test
+    fun `generate returns generation error when research fails unexpectedly`() = runTest {
+        val useCase =
+            StudySessionUseCase(
+                wikipediaClient = FailingWikipediaClient(),
+                openAiGateway =
+                    PlatformOpenAiGateway(
+                        apiKeyProvider = StaticApiKeyProvider(ApiKeyProviderResult.Available("sk-live")),
+                        llmModel = testLLModel,
+                        promptExecutorFactory = { ClosablePromptExecutor(responseJson = readyPayloadJson()) },
+                    ),
+            )
+
+        val result =
+            useCase.generate(
+                StudyRequestInput(
+                    topicsText = "Kotlin",
+                    maxQuestions = 2,
+                    difficulty = Difficulty.MEDIUM,
+                ),
+            )
+
+        assertEquals(StudyGenerationState.GENERATION_ERROR, result.state)
+        assertEquals("Generation interrupted", result.screenTitle)
+        assertEquals("Unable to build the study session", result.error?.title)
+        assertTrue(result.error?.message?.contains("offline for test") == true)
+    }
+
+    @Test
     fun `generate closes the prompt executor after successful generation`() = runTest {
         val promptExecutor = ClosablePromptExecutor(responseJson = readyPayloadJson())
         val useCase =
@@ -202,6 +230,19 @@ class StudySessionUseCaseTest {
                     ),
                 plainTextContent = List(160) { index -> "${title.trim()} detail ${index + 1}" }.joinToString(separator = " "),
             )
+    }
+
+    private class FailingWikipediaClient : WikipediaClient {
+        override suspend fun search(
+            query: String,
+            limit: Int,
+        ): List<WikipediaSearchResult> = error("Wikipedia is offline for test.")
+
+        override suspend fun fetchArticleSummary(title: String): WikipediaArticleSummary =
+            error("Not used when search fails.")
+
+        override suspend fun fetchArticle(title: String): WikipediaArticle =
+            error("Not used when search fails.")
     }
 
     private companion object {

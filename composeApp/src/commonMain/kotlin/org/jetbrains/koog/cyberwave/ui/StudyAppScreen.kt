@@ -25,13 +25,18 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,15 +67,10 @@ fun StudyAppScreen(
             )
 
         is StudyUiState.Loading ->
-            StagePlaceholderScreen(
+            ResearchingScreen(
                 modifier = modifier,
-                eyebrow = "RESEARCH PIPELINE",
-                title = "Generation starts from a valid request",
-                message = "The form is wired and validation is live. Researching, summary, quiz, and results screens land in the next tasks.",
-                supportingNote = "Requested ${uiState.request.maxQuestions} questions across ${uiState.request.topics.size} topic(s).",
-                actionLabel = "Back to request",
-                onAction = { onEvent(StudyUiEvent.ReturnToInput) },
-                loading = true,
+                form = uiState.form,
+                topicCount = uiState.request.topics.size,
             )
 
         is StudyUiState.Summary ->
@@ -250,6 +250,164 @@ private fun HeroPanel(modifier: Modifier = Modifier) {
                 InsightBadge(text = "Desktop + Wasm")
                 InsightBadge(text = "Local direct OpenAI")
                 InsightBadge(text = "Source-backed summaries")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResearchingScreen(
+    form: StudyFormState,
+    topicCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    val stages =
+        remember(form.maxQuestions, form.difficulty, topicCount) {
+            listOf(
+                "Validating $topicCount topic(s) and ${form.maxQuestions} requested question(s).",
+                "Searching Wikipedia and ranking likely article candidates.",
+                "Fetching article content and checking evidence coverage for ${form.difficulty.label}.",
+                "Asking Koog for the structured summary and quiz payload.",
+            )
+        }
+    var activeStage by remember(stages) { mutableIntStateOf(0) }
+
+    LaunchedEffect(stages) {
+        activeStage = 0
+        while (activeStage < stages.lastIndex) {
+            kotlinx.coroutines.delay(1200)
+            activeStage += 1
+        }
+    }
+
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .safeContentPadding()
+                .padding(horizontal = 24.dp, vertical = 28.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors =
+                CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {
+            Column(
+                modifier = Modifier.padding(28.dp),
+                verticalArrangement = Arrangement.spacedBy(22.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "RESEARCHING",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                    Text(
+                        text = "Building a source-backed study session",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "This step runs locally: validate input, search Wikipedia, fetch article evidence, and then generate the structured lesson payload.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                LinearProgressIndicator(
+                    progress = { (activeStage + 1f) / stages.size.toFloat() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            text = "Request snapshot",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Text(
+                            text = snapshotText(form),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    stages.forEachIndexed { index, stage ->
+                        val isActive = index == activeStage
+                        val isCompleted = index < activeStage
+                        val indicatorColor =
+                            when {
+                                isCompleted -> MaterialTheme.colorScheme.primary
+                                isActive -> MaterialTheme.colorScheme.secondary
+                                else -> MaterialTheme.colorScheme.outlineVariant
+                            }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .padding(top = 4.dp)
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .background(indicatorColor),
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = stage,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color =
+                                        if (isActive || isCompleted) {
+                                            MaterialTheme.colorScheme.onSurface
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                )
+                                Text(
+                                    text =
+                                        when {
+                                            isCompleted -> "Completed"
+                                            isActive -> "In progress"
+                                            else -> "Queued"
+                                        },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = indicatorColor,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(34.dp),
+                        strokeWidth = 3.dp,
+                    )
+                    Text(
+                        text = "If this stalls locally, check your network and local OpenAI key setup, then try again.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -550,7 +708,6 @@ private fun StagePlaceholderScreen(
     actionLabel: String,
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
-    loading: Boolean = false,
 ) {
     Box(
         modifier =
@@ -584,12 +741,6 @@ private fun StagePlaceholderScreen(
                         text = eyebrow,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                }
-                if (loading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(44.dp),
-                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
                 Text(

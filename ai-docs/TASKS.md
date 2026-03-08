@@ -58,7 +58,7 @@ Status legend:
 ## Phase 5: Compose UI
 
 * `T050` `done` - Build the input screen with topics, question count, difficulty, and specific instructions.
-* `T051` `planned` - Build the researching/loading experience.
+* `T051` `done` - Build the researching/loading experience.
 * `T052` `planned` - Build the summary screen with source list and `Start the quiz` action.
 * `T053` `planned` - Build the single-choice quiz screen.
 * `T054` `planned` - Build the quiz results screen and failure states.

@@ -96,6 +96,21 @@ class StudyUiStateReducerTest {
     }
 
     @Test
+    fun `generation completed with runtime generation error enters failure state`() {
+        val loadingState = validLoadingState()
+
+        val nextState =
+            StudyUiStateReducer.reduce(
+                loadingState,
+                StudyUiEvent.GenerationCompleted(screenModel = generationErrorScreenModel()),
+            )
+
+        val failureState = assertIs<StudyUiState.Failure>(nextState)
+        assertEquals(StudyGenerationState.GENERATION_ERROR, failureState.screenModel.state)
+        assertEquals("Unable to build the study session", failureState.screenModel.error?.title)
+    }
+
+    @Test
     fun `quiz flow advances to results after answering last question`() {
         val summaryState =
             assertIs<StudyUiState.Summary>(
@@ -311,6 +326,22 @@ class StudyUiStateReducerTest {
                 StudyScreenError(
                     title = "OpenAI key missing",
                     message = "Set OPENAI_API_KEY in your local configuration.",
+                ),
+        )
+
+    private fun generationErrorScreenModel(): StudyScreenModel =
+        StudyScreenModel(
+            screenTitle = "Generation interrupted",
+            topics = listOf("Kotlin Coroutines"),
+            summaryCards = emptyList(),
+            quiz = null,
+            sources = emptyList(),
+            state = StudyGenerationState.GENERATION_ERROR,
+            primaryAction = PrimaryAction(id = PrimaryActionId.RETRY, label = "Retry"),
+            error =
+                StudyScreenError(
+                    title = "Unable to build the study session",
+                    message = "The local research or generation flow failed before a study payload could be produced.",
                 ),
         )
 }
