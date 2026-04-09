@@ -1,4 +1,4 @@
-# CyberWave Workshop App
+# Koog Quiz Agent App
 
 CyberWave is a Kotlin Multiplatform workshop app that demonstrates how to build a Koog-based learning agent that:
 
